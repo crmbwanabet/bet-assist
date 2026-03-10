@@ -4570,8 +4570,7 @@ Ready for your first pick?`,
           // If we reach here, the Edge Function isn't configured correctly
           console.error('web_search should be handled by Anthropic API, not client-side!');
           result = { 
-            error: 'Web search not available. Please update the Edge Function to enable Anthropic native web search.',
-            hint: 'The Edge Function needs to use type: web_search_20250305'
+            error: 'Web search is temporarily unavailable. Try asking without real-time search.',
           };
           break;
         default:
@@ -4800,16 +4799,16 @@ No search needed for casino.`;
           console.error('Proxy Error Body:', errorText);
           
           if (response.status === 404) {
-            throw new Error('API route not found. Make sure /api/chat.js is deployed to Vercel.');
+            throw new Error('Bwana, our system is being updated. Please try again in a few minutes.');
           }
           if (response.status === 401 || response.status === 403) {
-            throw new Error('API key error. Check ANTHROPIC_API_KEY is set in Vercel environment variables.');
+            throw new Error('Bwana, we\'re experiencing a configuration issue. Our team has been notified.');
           }
           if (response.status === 500) {
-            throw new Error('Server error. Check Vercel function logs for details.');
+            throw new Error('Bwana, our servers hit a snag. Please try again shortly.');
           }
           
-          throw new Error(`API request failed: ${response.status} - ${errorText}`);
+          throw new Error('Bwana, something went wrong on our end. Please try again.');
         }
 
         return await response.json();
@@ -4817,7 +4816,7 @@ No search needed for casino.`;
         if (error.message.includes('Failed to fetch')) {
           console.error('Network Error - API unreachable');
           console.error('URL attempted:', API_CONFIG.chatUrl);
-          throw new Error('Cannot reach API. Check: 1) Vercel deployment is live, 2) /api/chat.js exists, 3) ANTHROPIC_API_KEY is set in Vercel env vars');
+          throw new Error('Bwana, can\'t connect to our servers. Check your internet and try again.');
         }
         throw error;
       }
@@ -4922,10 +4921,10 @@ No search needed for casino.`;
         conversationHistory.pop(); // Remove failed message
         
         if (error.message.includes('Invalid API Key') || error.message.includes('authentication')) {
-          return '**Authentication Error**\n\nBwana, API key validation failed. Verify configuration.';
+          return 'Bwana, we\'re having a temporary service issue. Please try again later.';
         }
         
-        return `**System Error**\n\nBwana, processing failed: ${error.message}`;
+        return 'Bwana, something unexpected happened. Try again or ask a different question.';
       }
     }
 
@@ -5025,7 +5024,7 @@ No search needed for casino.`;
         speakText(response);
       } catch (error) {
         console.error('Error in sendMessage:', error);
-        addMessage(`**Processing Error**\n\nRequest failed: ${error.message}\n\nCheck your connection and try again.`, false, [
+        addMessage(`Bwana, request couldn't be completed. Check your connection and try again.`, false, [
           { text: 'Retry', action: message },
           { text: 'Help', action: 'help' },
         ]);
@@ -7365,7 +7364,7 @@ No search needed for casino.`;
         } else if (event.error === 'no-speech') {
           showVoiceStatus('No speech detected. Try again.', 2000);
         } else {
-          showVoiceError('Voice error: ' + event.error);
+          showVoiceError('Voice didn\'t come through. Give it another go.');
         }
       };
       
@@ -7850,8 +7849,8 @@ No search needed for casino.`;
         console.error(' Initialization failed:', error);
         document.getElementById('messages').innerHTML = `
           <div class="bg-red-500/20 border border-red-500 rounded-xl p-4 text-red-200">
-            <strong> Initialization Error</strong><br>
-            ${error.message}<br>
+            <strong>BetExpert is having trouble starting up.</strong><br>
+            Please refresh the page. If the problem continues, try again later.<br>
             <small>Check browser console for details</small>
           </div>
         `;
