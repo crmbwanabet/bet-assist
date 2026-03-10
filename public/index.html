@@ -495,15 +495,23 @@
     const HARDCODED_API_KEY = 'not-needed-using-proxy';
     
     // ============================================
-    //  SUPABASE DATABASE (OPTIONAL - for testing)
+    //  CLAUDE API PROXY (Vercel serverless function)
     // ============================================
     
+    const API_CONFIG = {
+      chatUrl: '/api/chat',       // Vercel serverless function proxies to Anthropic
+      configUrl: '/api/config',   // Public config endpoint
+    };
+
+    //  SUPABASE DATABASE (OPTIONAL - for player data persistence)
+    // ============================================
+    // Set these to enable Supabase player profiles, memories, and predictions.
+    // Without Supabase the app still works fully — uses localStorage instead.
+    
     const SUPABASE_CONFIG = {
-      url: 'https://xkhlobmrswqvznuojsgo.supabase.co',
-      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhraGxvYm1yc3dxdnpudW9qc2dvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1MTY1NzEsImV4cCI6MjA4NTA5MjU3MX0.79CMUzEpgnqzwnU2tyTgPhOjEbHEFchSVct8C_RQhx8',
-      enabled: true,
-      // Edge Function URL for Claude API proxy
-      claudeProxyUrl: 'https://xkhlobmrswqvznuojsgo.supabase.co/functions/v1/smart-processor',
+      url: '',        // e.g. 'https://yourproject.supabase.co'
+      anonKey: '',    // Your Supabase anon/public key
+      enabled: false, // Set to true + fill url/anonKey to enable
     };
 
     // Supabase client instance
@@ -4783,14 +4791,13 @@ No search needed for casino.`;
 
     // Helper function to call Claude via Supabase proxy
     async function callClaudeProxy(messages, system, tools) {
-      console.log('Calling Edge Function:', SUPABASE_CONFIG.claudeProxyUrl);
+      console.log('Calling Claude proxy:', API_CONFIG.chatUrl);
       
       try {
-        const response = await fetch(SUPABASE_CONFIG.claudeProxyUrl, {
+        const response = await fetch(API_CONFIG.chatUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_CONFIG.anonKey}`,
           },
           body: JSON.stringify({ messages, system, tools })
         });
@@ -4801,24 +4808,24 @@ No search needed for casino.`;
           console.error('Proxy Error Body:', errorText);
           
           if (response.status === 404) {
-            throw new Error('Edge Function not found. Please create "bet-assist-key" in Supabase.');
+            throw new Error('API route not found. Make sure /api/chat.js is deployed to Vercel.');
           }
-          if (response.status === 401) {
-            throw new Error('Unauthorized. Check your Supabase anon key.');
+          if (response.status === 401 || response.status === 403) {
+            throw new Error('API key error. Check ANTHROPIC_API_KEY is set in Vercel environment variables.');
           }
           if (response.status === 500) {
-            throw new Error('Edge Function error. Check ANTHROPIC_API_KEY secret is set.');
+            throw new Error('Server error. Check Vercel function logs for details.');
           }
           
-          throw new Error(`Proxy request failed: ${response.status} - ${errorText}`);
+          throw new Error(`API request failed: ${response.status} - ${errorText}`);
         }
 
         return await response.json();
       } catch (error) {
         if (error.message.includes('Failed to fetch')) {
-          console.error('Network Error - Edge Function unreachable');
-          console.error('URL attempted:', SUPABASE_CONFIG.claudeProxyUrl);
-          throw new Error('Cannot reach Edge Function. Check: 1) Function is deployed, 2) Function name is "smart-processor", 3) JWT verification is OFF, 4) Try redeploying function');
+          console.error('Network Error - API unreachable');
+          console.error('URL attempted:', API_CONFIG.chatUrl);
+          throw new Error('Cannot reach API. Check: 1) Vercel deployment is live, 2) /api/chat.js exists, 3) ANTHROPIC_API_KEY is set in Vercel env vars');
         }
         throw error;
       }
@@ -7760,7 +7767,30 @@ No search needed for casino.`;
 
     // Initialize the app
     async function initializeApp() {
-      // Initialize Supabase first
+      // Load config from Vercel API (Supabase credentials, API status)
+      try {
+        const configResp = await fetch(API_CONFIG.configUrl);
+        if (configResp.ok) {
+          const serverConfig = await configResp.json();
+          console.log(' Server config loaded:', serverConfig.apiReady ? 'API ready' : 'API key missing');
+          
+          // Apply Supabase config from server env vars if available
+          if (serverConfig.supabase?.enabled) {
+            SUPABASE_CONFIG.url = serverConfig.supabase.url;
+            SUPABASE_CONFIG.anonKey = serverConfig.supabase.anonKey;
+            SUPABASE_CONFIG.enabled = true;
+            console.log(' Supabase config loaded from server');
+          }
+          
+          if (!serverConfig.apiReady) {
+            console.warn('⚠️ ANTHROPIC_API_KEY not set in Vercel. Chat will not work.');
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ Could not load config from /api/config:', e.message);
+      }
+
+      // Initialize Supabase (if enabled)
       await initSupabase();
       
       // Check for existing login session
@@ -7818,7 +7848,8 @@ No search needed for casino.`;
 
     window.onload = async function() {
       console.log(' BetExpert AI Starting...');
-      console.log(' Using Supabase proxy:', SUPABASE_CONFIG.claudeProxyUrl);
+      console.log(' Using API proxy:', API_CONFIG.chatUrl);
+      console.log(' Supabase:', SUPABASE_CONFIG.enabled ? SUPABASE_CONFIG.url : 'disabled (using localStorage)');
       
       try {
         await initializeApp();
