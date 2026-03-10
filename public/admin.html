@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BetExpert Admin — Command Center</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Outfit', sans-serif; background: #050a18; color: #c8d6e5; }
+    code, .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 3px; }
+
+    /* Glow cards */
+    .card {
+      background: linear-gradient(145deg, #0b1628 0%, #0a1220 100%);
+      border: 1px solid #15253d;
+      border-radius: 12px;
+      padding: 20px;
+      transition: border-color 0.3s;
+    }
+    .card:hover { border-color: #1e4976; }
+
+    /* Stat cards */
+    .stat-card {
+      background: linear-gradient(145deg, #0d1b30 0%, #091422 100%);
+      border: 1px solid #15253d;
+      border-radius: 14px;
+      padding: 18px 22px;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::after {
+      content: '';
+      position: absolute;
+      top: 0; right: 0;
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      filter: blur(40px);
+      opacity: 0.15;
+    }
+    .stat-card.blue::after { background: #3b82f6; }
+    .stat-card.green::after { background: #22c55e; }
+    .stat-card.amber::after { background: #f59e0b; }
+    .stat-card.red::after { background: #ef4444; }
+    .stat-card.purple::after { background: #a855f7; }
+    .stat-card.cyan::after { background: #06b6d4; }
+
+    /* Severity badges */
+    .badge { padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .badge-critical { background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
+    .badge-high { background: #451a03; color: #fdba74; border: 1px solid #7c2d12; }
+    .badge-medium { background: #422006; color: #fcd34d; border: 1px solid #78350f; }
+    .badge-low { background: #052e16; color: #86efac; border: 1px solid #14532d; }
+    .badge-success { background: #052e16; color: #86efac; border: 1px solid #14532d; }
+    .badge-error { background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
+
+    /* Role badges */
+    .role-user { background: #1e3a5f; color: #93c5fd; }
+    .role-assistant { background: #14532d; color: #86efac; }
+    .role-tool_call { background: #3b0764; color: #d8b4fe; }
+    .role-tool_result { background: #422006; color: #fcd34d; }
+
+    /* Tab navigation */
+    .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; color: #64748b; transition: all 0.2s; font-weight: 500; }
+    .tab:hover { color: #94a3b8; }
+    .tab.active { color: #60a5fa; border-color: #3b82f6; }
+
+    /* Table */
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th { text-align: left; padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; border-bottom: 1px solid #15253d; }
+    .data-table td { padding: 10px 14px; border-bottom: 1px solid #0d1b2a; font-size: 13px; }
+    .data-table tr:hover td { background: #0b1628; }
+
+    /* Loading pulse */
+    @keyframes pulse-glow { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+    .loading { animation: pulse-glow 1.5s infinite; }
+
+    /* Auth overlay */
+    .auth-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      background: #050a18;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .auth-overlay input {
+      background: #0b1628; border: 1px solid #1e3a5f; border-radius: 8px;
+      color: #e2e8f0; padding: 12px 16px; font-size: 16px; width: 300px;
+      outline: none;
+    }
+    .auth-overlay input:focus { border-color: #3b82f6; }
+    .auth-overlay button {
+      background: #1e40af; color: white; padding: 12px 24px; border-radius: 8px;
+      font-weight: 600; cursor: pointer; border: none; font-size: 15px;
+    }
+    .auth-overlay button:hover { background: #2563eb; }
+
+    /* Conversation panel */
+    .msg-bubble {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .msg-user { background: #1e3a5f; margin-left: auto; border-bottom-right-radius: 4px; }
+    .msg-assistant { background: #14532d; margin-right: auto; border-bottom-left-radius: 4px; }
+    .msg-tool { background: #1a1a2e; margin-right: auto; border-left: 3px solid #a855f7; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- ===== AUTH OVERLAY ===== -->
+<div id="authOverlay" class="auth-overlay">
+  <div class="text-center">
+    <div class="text-3xl font-bold text-white mb-1">BetExpert</div>
+    <div class="text-sm text-slate-500 mb-8">Admin Command Center</div>
+    <div class="flex gap-3 items-center justify-center">
+      <input id="secretInput" type="password" placeholder="Admin secret" autofocus
+        onkeydown="if(event.key==='Enter')authenticate()">
+      <button onclick="authenticate()">Enter</button>
+    </div>
+    <div id="authError" class="text-red-400 text-sm mt-3 hidden">Invalid secret</div>
+  </div>
+</div>
+
+<!-- ===== MAIN LAYOUT ===== -->
+<div id="mainApp" class="hidden">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800/50 px-6 py-4 flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold text-white">BetExpert <span class="text-blue-400 font-normal text-sm">Admin</span></h1>
+    </div>
+    <div class="flex items-center gap-4">
+      <span id="lastRefresh" class="text-xs text-slate-600 mono"></span>
+      <button onclick="refreshAll()" class="text-xs bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded-lg hover:bg-blue-600/30">
+        Refresh
+      </button>
+      <div id="liveIndicator" class="flex items-center gap-2">
+        <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+        <span class="text-xs text-slate-500">Live</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="flex border-b border-slate-800/50 px-6 overflow-x-auto">
+    <div class="tab active" onclick="switchTab('overview')">Overview</div>
+    <div class="tab" onclick="switchTab('errors')">Errors</div>
+    <div class="tab" onclick="switchTab('conversations')">Conversations</div>
+    <div class="tab" onclick="switchTab('credits')">API Credits</div>
+    <div class="tab" onclick="switchTab('tools')">Tools</div>
+    <div class="tab" onclick="switchTab('slow')">Slow Requests</div>
+    <div class="tab" onclick="switchTab('gambling')">RG Flags</div>
+  </nav>
+
+  <!-- Tab Content -->
+  <main class="p-6 max-w-[1400px] mx-auto">
+
+    <!-- ===== OVERVIEW TAB ===== -->
+    <div id="tab-overview" class="tab-content">
+      <!-- Stat cards row -->
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        <div class="stat-card blue">
+          <div class="text-xs text-slate-500 mb-1">Requests Today</div>
+          <div id="statRequests" class="text-2xl font-bold text-white loading">—</div>
+        </div>
+        <div class="stat-card red">
+          <div class="text-xs text-slate-500 mb-1">Error Rate</div>
+          <div id="statErrorRate" class="text-2xl font-bold text-white loading">—</div>
+        </div>
+        <div class="stat-card green">
+          <div class="text-xs text-slate-500 mb-1">Active Now</div>
+          <div id="statActiveSessions" class="text-2xl font-bold text-white loading">—</div>
+        </div>
+        <div class="stat-card amber">
+          <div class="text-xs text-slate-500 mb-1">Spend Today</div>
+          <div id="statCostToday" class="text-2xl font-bold text-white loading">—</div>
+        </div>
+        <div class="stat-card purple">
+          <div class="text-xs text-slate-500 mb-1">Tokens Today</div>
+          <div id="statTokens" class="text-2xl font-bold text-white loading">—</div>
+        </div>
+        <div class="stat-card cyan">
+          <div class="text-xs text-slate-500 mb-1">Avg Response</div>
+          <div id="statAvgDuration" class="text-2xl font-bold text-white loading">—</div>
+        </div>
+      </div>
+
+      <!-- Charts row -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <div class="card">
+          <div class="text-sm font-semibold text-slate-400 mb-4">Daily Requests & Cost (14 days)</div>
+          <canvas id="chartDaily" height="200"></canvas>
+        </div>
+        <div class="card">
+          <div class="text-sm font-semibold text-slate-400 mb-4">Error Rate Trend</div>
+          <canvas id="chartErrors" height="200"></canvas>
+        </div>
+      </div>
+
+      <!-- Recent errors -->
+      <div class="card">
+        <div class="text-sm font-semibold text-slate-400 mb-4">Recent Errors (24h)</div>
+        <div id="overviewErrors" class="text-sm text-slate-500">Loading...</div>
+      </div>
+    </div>
+
+    <!-- ===== ERRORS TAB ===== -->
+    <div id="tab-errors" class="tab-content hidden">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="text-sm text-slate-500">Filter:</span>
+        <button onclick="loadErrors()" class="badge badge-low cursor-pointer">All</button>
+        <button onclick="loadErrors('critical')" class="badge badge-critical cursor-pointer">Critical</button>
+        <button onclick="loadErrors('high')" class="badge badge-high cursor-pointer">High</button>
+        <button onclick="loadErrors('medium')" class="badge badge-medium cursor-pointer">Medium</button>
+        <button onclick="loadErrors('low')" class="badge badge-low cursor-pointer">Low</button>
+      </div>
+      <div class="card overflow-x-auto">
+        <table class="data-table">
+          <thead><tr>
+            <th>Time</th><th>Severity</th><th>Source</th><th>Message</th><th>Session</th>
+          </tr></thead>
+          <tbody id="errorsTable"><tr><td colspan="5" class="text-slate-600">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== CONVERSATIONS TAB ===== -->
+    <div id="tab-conversations" class="tab-content hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <!-- Session list -->
+        <div class="card lg:col-span-1">
+          <div class="text-sm font-semibold text-slate-400 mb-3">Recent Sessions</div>
+          <div id="sessionList" class="space-y-2 max-h-[600px] overflow-y-auto text-sm">Loading...</div>
+        </div>
+        <!-- Conversation viewer -->
+        <div class="card lg:col-span-2">
+          <div class="text-sm font-semibold text-slate-400 mb-3">Conversation</div>
+          <div id="conversationView" class="max-h-[600px] overflow-y-auto space-y-2 text-sm text-slate-500">
+            Select a session to view the conversation.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== API CREDITS TAB ===== -->
+    <div id="tab-credits" class="tab-content hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <div class="card">
+          <div class="text-sm font-semibold text-slate-400 mb-4">Daily Cost (USD)</div>
+          <canvas id="chartCost" height="220"></canvas>
+        </div>
+        <div class="card">
+          <div class="text-sm font-semibold text-slate-400 mb-4">Daily Tokens</div>
+          <canvas id="chartTokens" height="220"></canvas>
+        </div>
+      </div>
+      <div class="card overflow-x-auto">
+        <div class="text-sm font-semibold text-slate-400 mb-4">Daily Breakdown</div>
+        <table class="data-table">
+          <thead><tr>
+            <th>Date</th><th>Requests</th><th>Input Tok</th><th>Output Tok</th><th>Total Tok</th><th>Cost (USD)</th><th>Avg ms</th><th>Errors</th>
+          </tr></thead>
+          <tbody id="creditsTable"><tr><td colspan="8" class="text-slate-600">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== TOOLS TAB ===== -->
+    <div id="tab-tools" class="tab-content hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <div class="card">
+          <div class="text-sm font-semibold text-slate-400 mb-4">Tool Popularity</div>
+          <canvas id="chartTools" height="280"></canvas>
+        </div>
+        <div class="card">
+          <div class="text-sm font-semibold text-slate-400 mb-4">Tool Error Rates</div>
+          <canvas id="chartToolErrors" height="280"></canvas>
+        </div>
+      </div>
+      <div class="card overflow-x-auto">
+        <table class="data-table">
+          <thead><tr>
+            <th>Tool</th><th>Calls</th><th>Errors</th><th>Error Rate</th><th>Avg Duration</th>
+          </tr></thead>
+          <tbody id="toolsTable"><tr><td colspan="5" class="text-slate-600">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== SLOW REQUESTS TAB ===== -->
+    <div id="tab-slow" class="tab-content hidden">
+      <div class="card overflow-x-auto">
+        <div class="text-sm font-semibold text-slate-400 mb-4">Requests over 10 seconds</div>
+        <table class="data-table">
+          <thead><tr>
+            <th>Time</th><th>Duration</th><th>Model</th><th>Tools</th><th>Tokens</th><th>Status</th><th>Session</th>
+          </tr></thead>
+          <tbody id="slowTable"><tr><td colspan="7" class="text-slate-600">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== RESPONSIBLE GAMBLING TAB ===== -->
+    <div id="tab-gambling" class="tab-content hidden">
+      <div class="card overflow-x-auto">
+        <div class="text-sm font-semibold text-slate-400 mb-4">Sessions Over 30 Minutes</div>
+        <table class="data-table">
+          <thead><tr>
+            <th>Session</th><th>Started</th><th>Duration (min)</th><th>Messages</th><th>Warning Shown</th>
+          </tr></thead>
+          <tbody id="gamblingTable"><tr><td colspan="5" class="text-slate-600">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  // ============================================
+  // AUTH
+  // ============================================
+  let adminSecret = sessionStorage.getItem('betexpert_admin_secret') || '';
+  let charts = {};
+
+  if (adminSecret) {
+    document.getElementById('authOverlay').classList.add('hidden');
+    document.getElementById('mainApp').classList.remove('hidden');
+    refreshAll();
+  }
+
+  function authenticate() {
+    const input = document.getElementById('secretInput');
+    adminSecret = input.value.trim();
+    if (!adminSecret) return;
+
+    // Test with a real request
+    api('overview').then(data => {
+      if (data.error) {
+        document.getElementById('authError').classList.remove('hidden');
+        return;
+      }
+      sessionStorage.setItem('betexpert_admin_secret', adminSecret);
+      document.getElementById('authOverlay').classList.add('hidden');
+      document.getElementById('mainApp').classList.remove('hidden');
+      refreshAll();
+    });
+  }
+
+  // ============================================
+  // API HELPER
+  // ============================================
+  async function api(view, params = {}) {
+    const qs = new URLSearchParams({ view, ...params }).toString();
+    try {
+      const resp = await fetch(`/api/admin?${qs}`, {
+        headers: { 'x-admin-secret': adminSecret },
+      });
+      if (resp.status === 401) {
+        sessionStorage.removeItem('betexpert_admin_secret');
+        document.getElementById('authOverlay').classList.remove('hidden');
+        document.getElementById('mainApp').classList.add('hidden');
+        return { error: 'Unauthorized' };
+      }
+      return await resp.json();
+    } catch (e) {
+      console.error('API error:', e);
+      return { error: e.message };
+    }
+  }
+
+  // ============================================
+  // TAB SWITCHING
+  // ============================================
+  let currentTab = 'overview';
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.remove('hidden');
+    event.target.classList.add('active');
+    currentTab = tab;
+
+    // Load data for tab
+    switch (tab) {
+      case 'overview': loadOverview(); break;
+      case 'errors': loadErrors(); break;
+      case 'conversations': loadSessions(); break;
+      case 'credits': loadCredits(); break;
+      case 'tools': loadTools(); break;
+      case 'slow': loadSlow(); break;
+      case 'gambling': loadGambling(); break;
+    }
+  }
+
+  // ============================================
+  // REFRESH ALL
+  // ============================================
+  async function refreshAll() {
+    document.getElementById('lastRefresh').textContent = 'Refreshing...';
+    await loadOverview();
+    document.getElementById('lastRefresh').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  }
+
+  // Auto-refresh every 60 seconds
+  setInterval(() => { if (adminSecret) refreshAll(); }, 60000);
+
+  // ============================================
+  // FORMATTERS
+  // ============================================
+  function fmtTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function fmtDuration(ms) {
+    if (!ms) return '—';
+    if (ms < 1000) return ms + 'ms';
+    return (ms / 1000).toFixed(1) + 's';
+  }
+
+  function fmtTokens(n) {
+    if (!n) return '0';
+    if (n > 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n > 1000) return (n / 1000).toFixed(1) + 'K';
+    return n.toString();
+  }
+
+  function fmtCost(usd) {
+    if (!usd) return '$0.00';
+    return '$' + parseFloat(usd).toFixed(4);
+  }
+
+  function fmtSessionId(sid) {
+    if (!sid) return '—';
+    return sid.length > 18 ? sid.slice(0, 18) + '…' : sid;
+  }
+
+  // ============================================
+  // OVERVIEW TAB
+  // ============================================
+  async function loadOverview() {
+    const data = await api('overview');
+    if (data.error) return;
+
+    // Stat cards
+    document.getElementById('statRequests').textContent = data.today.requests;
+    document.getElementById('statRequests').classList.remove('loading');
+    document.getElementById('statErrorRate').textContent = data.today.error_rate + '%';
+    document.getElementById('statErrorRate').classList.remove('loading');
+    document.getElementById('statActiveSessions').textContent = data.active_sessions;
+    document.getElementById('statActiveSessions').classList.remove('loading');
+    document.getElementById('statCostToday').textContent = fmtCost(data.today.cost_usd);
+    document.getElementById('statCostToday').classList.remove('loading');
+    document.getElementById('statTokens').textContent = fmtTokens(data.today.tokens);
+    document.getElementById('statTokens').classList.remove('loading');
+    document.getElementById('statAvgDuration').textContent = fmtDuration(data.today.avg_duration_ms);
+    document.getElementById('statAvgDuration').classList.remove('loading');
+
+    // Daily chart
+    const daily = (data.daily_usage || []).reverse();
+    renderDailyChart(daily);
+    renderErrorChart(daily);
+
+    // Recent errors
+    const errors = await api('errors', { limit: 5 });
+    if (Array.isArray(errors) && errors.length > 0) {
+      document.getElementById('overviewErrors').innerHTML = errors.map(e => `
+        <div class="flex items-center gap-3 py-2 border-b border-slate-800/50">
+          <span class="badge badge-${e.severity}">${e.severity}</span>
+          <span class="text-xs text-slate-500 mono">${fmtTime(e.created_at)}</span>
+          <span class="text-slate-300 flex-1 truncate">${esc(e.error_message)}</span>
+          <span class="text-xs text-slate-600 mono">${e.source}</span>
+        </div>
+      `).join('');
+    } else {
+      document.getElementById('overviewErrors').innerHTML = '<div class="text-slate-600 py-4">No errors in the last 24 hours.</div>';
+    }
+  }
+
+  function renderDailyChart(daily) {
+    const ctx = document.getElementById('chartDaily');
+    if (charts.daily) charts.daily.destroy();
+    charts.daily = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: daily.map(d => d.day?.slice(5) || ''),
+        datasets: [
+          { label: 'Requests', data: daily.map(d => d.total_requests || 0), backgroundColor: '#3b82f680', borderColor: '#3b82f6', borderWidth: 1, borderRadius: 4, yAxisID: 'y' },
+          { label: 'Cost ($)', data: daily.map(d => parseFloat(d.total_cost_usd || 0)), type: 'line', borderColor: '#f59e0b', pointBackgroundColor: '#f59e0b', tension: 0.3, yAxisID: 'y1' },
+        ],
+      },
+      options: chartOptions({ y: { position: 'left', title: { display: true, text: 'Requests', color: '#64748b' } }, y1: { position: 'right', title: { display: true, text: 'Cost ($)', color: '#64748b' }, grid: { display: false } } }),
+    });
+  }
+
+  function renderErrorChart(daily) {
+    const ctx = document.getElementById('chartErrors');
+    if (charts.errors) charts.errors.destroy();
+    charts.errors = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: daily.map(d => d.day?.slice(5) || ''),
+        datasets: [
+          { label: 'Error Rate %', data: daily.map(d => parseFloat(d.error_rate_pct || 0)), borderColor: '#ef4444', backgroundColor: '#ef444420', fill: true, tension: 0.3 },
+          { label: 'Slow Requests', data: daily.map(d => d.slow_count || 0), borderColor: '#f59e0b', borderDash: [4, 4], tension: 0.3 },
+        ],
+      },
+      options: chartOptions({ y: { beginAtZero: true } }),
+    });
+  }
+
+  // ============================================
+  // ERRORS TAB
+  // ============================================
+  async function loadErrors(severity = null) {
+    const params = { limit: 50 };
+    if (severity) params.severity = severity;
+    const data = await api('errors', params);
+    if (!Array.isArray(data)) return;
+
+    const tbody = document.getElementById('errorsTable');
+    if (data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-slate-600 py-4">No errors found.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(e => `
+      <tr>
+        <td class="mono text-xs text-slate-500 whitespace-nowrap">${fmtTime(e.created_at)}</td>
+        <td><span class="badge badge-${e.severity}">${e.severity}</span></td>
+        <td class="text-slate-400">${esc(e.source)}</td>
+        <td class="text-slate-300 max-w-[400px] truncate" title="${esc(e.error_raw || e.error_message)}">${esc(e.error_message)}</td>
+        <td class="mono text-xs text-slate-600 cursor-pointer hover:text-blue-400" onclick="viewSession('${esc(e.session_id)}')">${fmtSessionId(e.session_id)}</td>
+      </tr>
+    `).join('');
+  }
+
+  // ============================================
+  // CONVERSATIONS TAB
+  // ============================================
+  async function loadSessions() {
+    const data = await api('sessions', { limit: 30 });
+    if (!Array.isArray(data)) return;
+
+    document.getElementById('sessionList').innerHTML = data.map(s => {
+      const dur = s.last_active_at && s.started_at
+        ? Math.round((new Date(s.last_active_at) - new Date(s.started_at)) / 60000) + 'min'
+        : '—';
+      return `
+        <div onclick="loadConversation('${esc(s.session_id)}')" 
+          class="p-3 rounded-lg cursor-pointer hover:bg-slate-800/50 border border-transparent hover:border-slate-700/50 transition-all">
+          <div class="flex justify-between items-center">
+            <span class="mono text-xs text-blue-400">${fmtSessionId(s.session_id)}</span>
+            <span class="text-xs text-slate-600">${dur}</span>
+          </div>
+          <div class="flex items-center gap-3 mt-1.5 text-xs text-slate-500">
+            <span>${s.message_count || 0} msgs</span>
+            <span>${fmtTokens(s.total_tokens)} tok</span>
+            <span>${fmtCost(s.total_cost_usd)}</span>
+            ${s.gambling_warning_shown ? '<span class="text-amber-400">⚠ RG</span>' : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function loadConversation(sessionId) {
+    const data = await api('conversation', { session_id: sessionId });
+    if (!Array.isArray(data) || data.length === 0) {
+      document.getElementById('conversationView').innerHTML = '<div class="text-slate-600 py-4">No messages found for this session.</div>';
+      return;
+    }
+
+    document.getElementById('conversationView').innerHTML = data.map(m => {
+      const roleClass = m.role === 'user' ? 'msg-user' : m.role === 'assistant' ? 'msg-assistant' : 'msg-tool';
+      const label = m.role === 'tool_call' ? `🔧 ${m.tool_name}` : m.role === 'tool_result' ? `📦 ${m.tool_name}` : '';
+      return `
+        <div class="flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}">
+          <div class="msg-bubble ${roleClass}">
+            ${label ? `<div class="text-xs text-purple-300 mb-1">${label}</div>` : ''}
+            <div class="whitespace-pre-wrap">${esc(m.content || '(empty)')}</div>
+            <div class="text-xs text-slate-600 mt-1">${fmtTime(m.created_at)}${m.tokens_used ? ` · ${fmtTokens(m.tokens_used)} tok` : ''}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Scroll to bottom
+    const view = document.getElementById('conversationView');
+    view.scrollTop = view.scrollHeight;
+  }
+
+  function viewSession(sessionId) {
+    switchTab('conversations');
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab')[2].classList.add('active');
+    loadSessions().then(() => loadConversation(sessionId));
+  }
+
+  // ============================================
+  // API CREDITS TAB
+  // ============================================
+  async function loadCredits() {
+    const data = await api('credits');
+    if (!Array.isArray(data)) return;
+
+    const daily = data.reverse();
+
+    // Cost chart
+    const ctxCost = document.getElementById('chartCost');
+    if (charts.cost) charts.cost.destroy();
+    charts.cost = new Chart(ctxCost, {
+      type: 'bar',
+      data: {
+        labels: daily.map(d => d.day?.slice(5) || ''),
+        datasets: [{ label: 'Cost ($)', data: daily.map(d => parseFloat(d.total_cost_usd || 0)), backgroundColor: '#f59e0b80', borderColor: '#f59e0b', borderWidth: 1, borderRadius: 4 }],
+      },
+      options: chartOptions({ y: { beginAtZero: true } }),
+    });
+
+    // Token chart
+    const ctxTok = document.getElementById('chartTokens');
+    if (charts.tokens) charts.tokens.destroy();
+    charts.tokens = new Chart(ctxTok, {
+      type: 'bar',
+      data: {
+        labels: daily.map(d => d.day?.slice(5) || ''),
+        datasets: [
+          { label: 'Input', data: daily.map(d => d.total_input_tokens || 0), backgroundColor: '#3b82f680', borderRadius: 4 },
+          { label: 'Output', data: daily.map(d => d.total_output_tokens || 0), backgroundColor: '#22c55e80', borderRadius: 4 },
+        ],
+      },
+      options: { ...chartOptions({ y: { beginAtZero: true, stacked: true }, x: { stacked: true } }) },
+    });
+
+    // Table
+    document.getElementById('creditsTable').innerHTML = data.reverse().map(d => `
+      <tr>
+        <td class="mono text-slate-400">${d.day || '—'}</td>
+        <td>${d.total_requests || 0}</td>
+        <td class="mono">${fmtTokens(d.total_input_tokens)}</td>
+        <td class="mono">${fmtTokens(d.total_output_tokens)}</td>
+        <td class="mono font-semibold text-white">${fmtTokens(d.total_tokens)}</td>
+        <td class="mono text-amber-400">${fmtCost(d.total_cost_usd)}</td>
+        <td class="mono">${fmtDuration(d.avg_duration_ms)}</td>
+        <td>${d.error_count ? `<span class="text-red-400">${d.error_count}</span>` : '<span class="text-slate-700">0</span>'}</td>
+      </tr>
+    `).join('');
+  }
+
+  // ============================================
+  // TOOLS TAB
+  // ============================================
+  async function loadTools() {
+    const data = await api('tools');
+    if (!Array.isArray(data)) return;
+
+    // Popularity chart
+    const ctx1 = document.getElementById('chartTools');
+    if (charts.tools) charts.tools.destroy();
+    charts.tools = new Chart(ctx1, {
+      type: 'bar',
+      data: {
+        labels: data.map(d => d.tool_name || ''),
+        datasets: [{ label: 'Calls', data: data.map(d => d.call_count || 0), backgroundColor: '#6366f180', borderColor: '#6366f1', borderWidth: 1, borderRadius: 4 }],
+      },
+      options: { indexAxis: 'y', ...chartOptions({ x: { beginAtZero: true } }) },
+    });
+
+    // Error rate chart
+    const ctx2 = document.getElementById('chartToolErrors');
+    if (charts.toolErrors) charts.toolErrors.destroy();
+    charts.toolErrors = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels: data.map(d => d.tool_name || ''),
+        datasets: [{ label: 'Error %', data: data.map(d => parseFloat(d.error_rate_pct || 0)), backgroundColor: '#ef444480', borderColor: '#ef4444', borderWidth: 1, borderRadius: 4 }],
+      },
+      options: { indexAxis: 'y', ...chartOptions({ x: { beginAtZero: true, max: 100 } }) },
+    });
+
+    // Table
+    document.getElementById('toolsTable').innerHTML = data.map(d => `
+      <tr>
+        <td class="mono text-blue-300">${esc(d.tool_name)}</td>
+        <td class="font-semibold text-white">${d.call_count || 0}</td>
+        <td>${d.error_count ? `<span class="text-red-400">${d.error_count}</span>` : '0'}</td>
+        <td>${d.error_rate_pct ? `<span class="text-amber-400">${d.error_rate_pct}%</span>` : '<span class="text-slate-700">0%</span>'}</td>
+        <td class="mono">${fmtDuration(d.avg_duration_ms)}</td>
+      </tr>
+    `).join('');
+  }
+
+  // ============================================
+  // SLOW REQUESTS TAB
+  // ============================================
+  async function loadSlow() {
+    const data = await api('slow', { limit: 30 });
+    if (!Array.isArray(data)) return;
+
+    const tbody = document.getElementById('slowTable');
+    if (data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-slate-600 py-4">No slow requests. Everything is fast.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(r => {
+      const tools = Array.isArray(r.tools_called) ? r.tools_called.join(', ') : (r.tools_called || '—');
+      return `
+        <tr>
+          <td class="mono text-xs text-slate-500 whitespace-nowrap">${fmtTime(r.created_at)}</td>
+          <td class="text-red-400 font-semibold">${fmtDuration(r.duration_ms)}</td>
+          <td class="mono text-xs">${r.model || '—'}</td>
+          <td class="mono text-xs text-purple-300 max-w-[200px] truncate">${esc(tools)}</td>
+          <td class="mono">${fmtTokens((r.input_tokens || 0) + (r.output_tokens || 0))}</td>
+          <td><span class="badge badge-${r.status === 'error' ? 'error' : 'success'}">${r.status}</span></td>
+          <td class="mono text-xs text-slate-600 cursor-pointer hover:text-blue-400" onclick="viewSession('${esc(r.session_id)}')">${fmtSessionId(r.session_id)}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // ============================================
+  // RESPONSIBLE GAMBLING TAB
+  // ============================================
+  async function loadGambling() {
+    const data = await api('gambling');
+    if (!Array.isArray(data)) return;
+
+    const tbody = document.getElementById('gamblingTable');
+    if (data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-slate-600 py-4">No long sessions flagged.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(s => {
+      const dur = Math.round(parseFloat(s.session_duration_minutes) || 0);
+      const isLong = dur > 60;
+      return `
+        <tr>
+          <td class="mono text-xs text-slate-400 cursor-pointer hover:text-blue-400" onclick="viewSession('${esc(s.session_id)}')">${fmtSessionId(s.session_id)}</td>
+          <td class="text-xs text-slate-500">${fmtTime(s.started_at)}</td>
+          <td class="${isLong ? 'text-red-400 font-semibold' : 'text-amber-400'}">${dur} min</td>
+          <td>${s.message_count || 0}</td>
+          <td>${s.gambling_warning_shown ? '<span class="text-amber-400">Yes</span>' : '<span class="text-slate-600">No</span>'}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // ============================================
+  // CHART OPTIONS (shared dark theme config)
+  // ============================================
+  function chartOptions(scales = {}) {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#64748b', font: { family: 'Outfit', size: 11 } } } },
+      scales: Object.fromEntries(
+        Object.entries({
+          x: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: '#0f1f35' } },
+          y: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: '#0f1f35' } },
+          ...scales,
+        }).map(([k, v]) => [k, { ...{ ticks: { color: '#475569', font: { size: 10 } }, grid: { color: '#0f1f35' } }, ...v }])
+      ),
+    };
+  }
+
+  // ============================================
+  // UTILITIES
+  // ============================================
+  function esc(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = String(str);
+    return d.innerHTML;
+  }
+</script>
+</body>
+</html>
