@@ -2000,16 +2000,6 @@ Ready for your first pick?`,
         baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/racing',
       },
 
-      // ========== ESPORTS ==========
-      esports: {
-        name: 'Esports',
-        leagues: {
-          'lol': 'League of Legends', 'csgo': 'Counter-Strike', 'dota2': 'Dota 2', 
-          'valorant': 'Valorant', 'overwatch': 'Overwatch', 'rocket-league': 'Rocket League',
-        },
-        baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/esports',
-      },
-
       // ========== AUSTRALIAN RULES ==========
       afl: {
         name: 'Australian Rules Football',
@@ -4325,7 +4315,7 @@ Ready for your first pick?`,
           properties: {
             sport: {
               type: 'string',
-              description: 'Optional: filter by sport (soccer, basketball, football, baseball, hockey, tennis, golf, mma, boxing, rugby, cricket, racing, esports)',
+              description: 'Optional: filter by sport (soccer, basketball, football, baseball, hockey, tennis, golf, mma, boxing, rugby, cricket, racing)',
             }
           },
           required: [],
