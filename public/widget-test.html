@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BetExpert Widget Test — Simulated BwanaBet Page</title>
+  <style>
+    body {
+      margin: 0;
+      background: #0a0a0a;
+      color: #fff;
+      font-family: Arial, sans-serif;
+    }
+    .sim-header {
+      background: #111;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 2px solid #f5c518;
+    }
+    .sim-logo {
+      font-size: 20px;
+      font-weight: bold;
+      color: #f5c518;
+      letter-spacing: 1px;
+    }
+    .sim-nav a {
+      color: #888;
+      text-decoration: none;
+      font-size: 13px;
+      margin: 0 10px;
+    }
+    .sim-content {
+      padding: 40px 24px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .sim-content h1 { color: #f5c518; margin-bottom: 12px; }
+    .sim-content p { color: #999; line-height: 1.7; margin-bottom: 16px; }
+    .sim-banner {
+      background: linear-gradient(135deg, #1a1a2e, #0a0a0a);
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      margin: 30px 0;
+    }
+    .sim-banner h2 { color: #f5c518; font-size: 28px; }
+    .sim-banner p { color: #888; }
+
+    /* Fake Tawk.to bubble (for testing positioning) */
+    .fake-tawk {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #2b6cb0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 2000000000;
+      cursor: pointer;
+    }
+    .fake-tawk:hover { background: #3182ce; }
+  </style>
+</head>
+<body>
+
+  <div class="sim-header">
+    <div class="sim-logo">BWANABET</div>
+    <nav class="sim-nav">
+      <a href="#">HOME</a>
+      <a href="#">SPORT</a>
+      <a href="#">LIVE</a>
+      <a href="#">CASINO</a>
+      <a href="#">PROMOTIONS</a>
+    </nav>
+  </div>
+
+  <div class="sim-content">
+    <h1>Widget Test Page</h1>
+    <p>This page simulates the bwanabet.com layout to test the BetExpert widget positioning and functionality. The blue circle in the bottom-right represents where Tawk.to's bubble would be. The gold BetExpert button should appear above it.</p>
+
+    <div class="sim-banner">
+      <h2>K5 FREESPINS EVERY DAY</h2>
+      <p>Only at BwanaBet!</p>
+    </div>
+
+    <p>Try clicking the gold BetExpert button above the blue Tawk.to bubble. The chat panel should open inline. Try asking about EPL matches, La Liga standings, or casino tips.</p>
+    <p>On mobile (resize to &lt;480px), the chat panel should go full screen.</p>
+    <p style="margin-top: 40px; color: #555; font-size: 12px;">Note: Chat will only work when connected to the live API at bet-assist.vercel.app</p>
+  </div>
+
+  <!-- Fake Tawk.to bubble -->
+  <div class="fake-tawk" title="This simulates Tawk.to">💬</div>
+
+  <!-- BetExpert Widget (the actual embed code) -->
+  <script src="widget.js" data-offset-bottom="80" async></script>
+
+</body>
+</html>
