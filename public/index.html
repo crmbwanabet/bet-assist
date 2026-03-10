@@ -501,7 +501,33 @@
     const API_CONFIG = {
       chatUrl: '/api/chat',       // Vercel serverless function proxies to Anthropic
       configUrl: '/api/config',   // Public config endpoint
+      telemetryUrl: '/api/telemetry', // Client-side telemetry
     };
+
+    // Unique session ID for monitoring (persists per tab)
+    const SESSION_ID = 'ses_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+
+    // ============================================
+    //  TELEMETRY (sends session + error data to server)
+    // ============================================
+
+    function sendTelemetry(type, data = {}) {
+      try {
+        const body = JSON.stringify({ type, session_id: SESSION_ID, data });
+        const blob = new Blob([body], { type: 'application/json' });
+        navigator.sendBeacon?.(API_CONFIG.telemetryUrl, blob) || fetch(API_CONFIG.telemetryUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          keepalive: true,
+        }).catch(() => {});
+      } catch (e) { /* telemetry is best-effort */ }
+    }
+
+    function reportClientError(source, message, raw = '', severity = 'low', context = {}) {
+      console.error(`[${source}]`, message, raw);
+      sendTelemetry('error', { source, message, raw: String(raw).slice(0, 3000), severity, context });
+    }
 
     //  SUPABASE DATABASE (OPTIONAL - for player data persistence)
     // ============================================
@@ -4790,7 +4816,7 @@ No search needed for casino.`;
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ messages, system, tools })
+          body: JSON.stringify({ messages, system, tools, session_id: SESSION_ID })
         });
 
         if (!response.ok) {
@@ -4799,23 +4825,26 @@ No search needed for casino.`;
           console.error('Proxy Error Body:', errorText);
           
           if (response.status === 404) {
+            reportClientError('api', `API 404: Route not found`, errorText, 'critical');
             throw new Error('Bwana, our system is being updated. Please try again in a few minutes.');
           }
           if (response.status === 401 || response.status === 403) {
+            reportClientError('api', `API ${response.status}: Auth failed`, errorText, 'critical');
             throw new Error('Bwana, we\'re experiencing a configuration issue. Our team has been notified.');
           }
           if (response.status === 500) {
+            reportClientError('api', `API 500: Server error`, errorText, 'high');
             throw new Error('Bwana, our servers hit a snag. Please try again shortly.');
           }
           
+          reportClientError('api', `API ${response.status}: Request failed`, errorText, 'high');
           throw new Error('Bwana, something went wrong on our end. Please try again.');
         }
 
         return await response.json();
       } catch (error) {
         if (error.message.includes('Failed to fetch')) {
-          console.error('Network Error - API unreachable');
-          console.error('URL attempted:', API_CONFIG.chatUrl);
+          reportClientError('api', 'Network: Failed to fetch', error.message, 'high');
           throw new Error('Bwana, can\'t connect to our servers. Check your internet and try again.');
         }
         throw error;
@@ -4917,7 +4946,7 @@ No search needed for casino.`;
         return textContent;
 
       } catch (error) {
-        console.error('Claude API error:', error);
+        reportClientError('api', 'Claude API error', error.message, 'high', { stack: error.stack?.slice(0, 1000) });
         conversationHistory.pop(); // Remove failed message
         
         if (error.message.includes('Invalid API Key') || error.message.includes('authentication')) {
@@ -4998,6 +5027,7 @@ No search needed for casino.`;
       const sessionMinutes = (now - sessionStart) / 60000;
       if (sessionMinutes > 60 && !sessionWarningShown) {
         sessionWarningShown = true;
+        sendTelemetry('heartbeat', { gambling_warning: true, duration_minutes: Math.round(sessionMinutes) });
         setTimeout(() => {
           addMessage("Bwana, session duration exceeds 60 minutes. Reminder: Take regular breaks. Gamble responsibly.", false, [
             { text: 'Acknowledged', action: 'thanks' },
@@ -5023,7 +5053,7 @@ No search needed for casino.`;
         // Speak the response if voice output is enabled
         speakText(response);
       } catch (error) {
-        console.error('Error in sendMessage:', error);
+        reportClientError('client', 'sendMessage failed', error.message, 'medium', { userMessage: message?.slice(0, 200) });
         addMessage(`Bwana, request couldn't be completed. Check your connection and try again.`, false, [
           { text: 'Retry', action: message },
           { text: 'Help', action: 'help' },
@@ -7807,6 +7837,23 @@ No search needed for casino.`;
       
       // Pre-fetch popular data in background (non-blocking)
       prefetchPopularData();
+
+      // Start session telemetry
+      sendTelemetry('session_start', {
+        user_agent: navigator.userAgent,
+        screen_width: window.screen?.width || 0,
+        platform: navigator.platform || '',
+      });
+
+      // Heartbeat every 2 minutes (tracks session duration + active users)
+      setInterval(() => {
+        const durationMin = Math.round((Date.now() - sessionStart) / 60000);
+        sendTelemetry('heartbeat', {
+          duration_minutes: durationMin,
+          message_count: conversationHistory.length,
+          gambling_warning: sessionWarningShown,
+        });
+      }, 120000);
       
       // Show connection status
       if (supabaseClient && currentPlayerId) {
