@@ -27,13 +27,34 @@ function estimateCost(inp, out) {
   return ((inp / 1e6) * 3.0) + ((out / 1e6) * 15.0);
 }
 
+// Rate limit: 15 requests per minute per session
+async function checkRateLimit(sessionId) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return true; // If no Supabase, skip rate limiting
+
+  try {
+    const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
+    const resp = await fetch(
+      `${url}/rest/v1/monitor_requests?select=id&session_id=eq.${sessionId}&created_at=gte.${oneMinuteAgo}`,
+      { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+    );
+    if (!resp.ok) return true; // Fail open — don't block users if Supabase is down
+    const rows = await resp.json();
+    return rows.length < 15;
+  } catch {
+    return true; // Fail open
+  }
+}
+
 // ============================================
 // HANDLER
 // ============================================
 export default async function handler(req, res) {
   // CORS
   const origin = req.headers.origin || '';
-  const allowed = ['https://bwanabet.com', 'https://www.bwanabet.com', 'https://bet-assist.vercel.app', 'http://localhost:3000'];
+  const allowed = ['https://bwanabet.com', 'https://www.bwanabet.com', 'https://bet-assist.vercel.app'];
+  if (process.env.WIDGET_DEV === 'true') allowed.push('http://localhost:3000');
   res.setHeader('Access-Control-Allow-Origin', allowed.includes(origin) ? origin : allowed[0]);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -50,6 +71,12 @@ export default async function handler(req, res) {
   const sessionId = session_id || 'widget_anon';
 
   if (!messages?.length) return res.status(400).json({ error: 'Missing messages' });
+
+  // #2 server: Rate limit — 15 requests/minute per session via Supabase
+  const rateLimitOk = await checkRateLimit(sessionId);
+  if (!rateLimitOk) {
+    return res.status(429).json({ error: 'Too many requests. Please wait a moment before asking again.' });
+  }
 
   // Trim to last 20 messages
   let conversationMessages = messages.slice(-20);
