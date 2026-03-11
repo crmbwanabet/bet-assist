@@ -1,15 +1,797 @@
 // ============================================
-// BetExpert Widget — Chat Endpoint with Server-Side Tool Loop
-// One request in from widget → runs full Claude + ESPN tool loop → one response back
+// BetExpert Widget — Self-Contained Chat Endpoint
+// All-in-one: sports engine + system prompt + tool loop + monitoring
+// No external imports — everything inline for Vercel compatibility
 // ============================================
 
-import { TOOL_DEFINITIONS, executeTool, truncateResult } from './_lib/sports-engine.js';
-import { SYSTEM_PROMPT } from './_lib/system-prompt.js';
+// ============================================
+// BetExpert — Server-Side Sports Engine
+// Extracted from index.html for use in Vercel serverless functions.
+// Provides: ESPN data fetching, tool definitions, and executeTool().
+// ============================================
 
-const MAX_TOOL_LOOPS = 6;  // Safety cap
+// ============================================
+// ALL_SPORTS CONFIG
+// ============================================
+const ALL_SPORTS = {
+  soccer: {
+    name: 'Soccer/Football',
+    leagues: {
+      'eng.1': 'Premier League', 'eng.2': 'Championship', 'eng.fa': 'FA Cup',
+      'esp.1': 'La Liga', 'esp.copa_del_rey': 'Copa del Rey',
+      'ger.1': 'Bundesliga', 'ger.dfb_pokal': 'DFB Pokal',
+      'ita.1': 'Serie A', 'ita.coppa_italia': 'Coppa Italia',
+      'fra.1': 'Ligue 1', 'fra.coupe_de_france': 'Coupe de France',
+      'ned.1': 'Eredivisie', 'por.1': 'Primeira Liga', 'bel.1': 'Belgian Pro League',
+      'sco.1': 'Scottish Premiership', 'tur.1': 'Süper Lig',
+      'arg.1': 'Liga Profesional', 'bra.1': 'Brasileirão',
+      'usa.1': 'MLS', 'mex.1': 'Liga MX',
+      'sau.1': 'Saudi Pro League', 'jpn.1': 'J1 League', 'aus.1': 'A-League',
+      'rsa.1': 'PSL South Africa', 'egy.1': 'Egyptian Premier League',
+      'uefa.champions': 'UEFA Champions League', 'uefa.europa': 'UEFA Europa League',
+      'uefa.europa.conf': 'Conference League',
+      'conmebol.libertadores': 'Copa Libertadores',
+      'fifa.world': 'FIFA World Cup', 'uefa.euro': 'UEFA Euro',
+      'caf.nations': 'Africa Cup of Nations',
+    },
+    baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/soccer',
+  },
+  basketball: {
+    name: 'Basketball',
+    leagues: { 'nba': 'NBA', 'wnba': 'WNBA' },
+    baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/basketball',
+  },
+  football: {
+    name: 'American Football',
+    leagues: { 'nfl': 'NFL', 'college-football': 'NCAA Football' },
+    baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/football',
+  },
+  baseball: {
+    name: 'Baseball',
+    leagues: { 'mlb': 'MLB' },
+    baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/baseball',
+  },
+  hockey: {
+    name: 'Ice Hockey',
+    leagues: { 'nhl': 'NHL' },
+    baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/hockey',
+  },
+  tennis: {
+    name: 'Tennis',
+    leagues: { 'atp': 'ATP Tour', 'wta': 'WTA Tour' },
+    baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/tennis',
+  },
+  mma: {
+    name: 'MMA',
+    leagues: { 'ufc': 'UFC', 'pfl': 'PFL' },
+    baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/mma',
+  },
+  cricket: {
+    name: 'Cricket',
+    leagues: { 'ipl': 'IPL', 'bbl': 'Big Bash League', 'psl': 'Pakistan Super League' },
+    baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/cricket',
+  },
+  racing: {
+    name: 'Racing',
+    leagues: { 'f1': 'Formula 1', 'nascar-cup': 'NASCAR Cup Series', 'motogp': 'MotoGP' },
+    baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/racing',
+  },
+  rugby: {
+    name: 'Rugby',
+    leagues: { 'super-rugby': 'Super Rugby', 'six-nations': 'Six Nations' },
+    baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/rugby',
+  },
+};
+
+// ============================================
+// LEAGUE ALIASES
+// ============================================
+const LEAGUE_ALIASES = {
+  'premier league': { sport: 'soccer', league: 'eng.1' },
+  'epl': { sport: 'soccer', league: 'eng.1' },
+  'la liga': { sport: 'soccer', league: 'esp.1' },
+  'serie a': { sport: 'soccer', league: 'ita.1' },
+  'bundesliga': { sport: 'soccer', league: 'ger.1' },
+  'ligue 1': { sport: 'soccer', league: 'fra.1' },
+  'champions league': { sport: 'soccer', league: 'uefa.champions' },
+  'europa league': { sport: 'soccer', league: 'uefa.europa' },
+  'mls': { sport: 'soccer', league: 'usa.1' },
+  'liga mx': { sport: 'soccer', league: 'mex.1' },
+  'brasileirao': { sport: 'soccer', league: 'bra.1' },
+  'saudi league': { sport: 'soccer', league: 'sau.1' },
+  'eredivisie': { sport: 'soccer', league: 'ned.1' },
+  'world cup': { sport: 'soccer', league: 'fifa.world' },
+  'afcon': { sport: 'soccer', league: 'caf.nations' },
+  'nba': { sport: 'basketball', league: 'nba' },
+  'wnba': { sport: 'basketball', league: 'wnba' },
+  'nfl': { sport: 'football', league: 'nfl' },
+  'mlb': { sport: 'baseball', league: 'mlb' },
+  'nhl': { sport: 'hockey', league: 'nhl' },
+  'atp': { sport: 'tennis', league: 'atp' },
+  'wta': { sport: 'tennis', league: 'wta' },
+  'ufc': { sport: 'mma', league: 'ufc' },
+  'f1': { sport: 'racing', league: 'f1' },
+  'formula 1': { sport: 'racing', league: 'f1' },
+  'nascar': { sport: 'racing', league: 'nascar-cup' },
+  'ipl': { sport: 'cricket', league: 'ipl' },
+  'six nations': { sport: 'rugby', league: 'six-nations' },
+};
+
+// ============================================
+// UTILITIES
+// ============================================
+function resolveLeague(input) {
+  const lower = input.toLowerCase().trim();
+  if (LEAGUE_ALIASES[lower]) return LEAGUE_ALIASES[lower];
+  for (const [alias, config] of Object.entries(LEAGUE_ALIASES)) {
+    if (lower.includes(alias) || alias.includes(lower)) return config;
+  }
+  for (const [sport, config] of Object.entries(ALL_SPORTS)) {
+    for (const [leagueId, leagueName] of Object.entries(config.leagues)) {
+      if (leagueName.toLowerCase().includes(lower) || lower.includes(leagueName.toLowerCase())) {
+        return { sport, league: leagueId };
+      }
+    }
+  }
+  return null;
+}
+
+function buildUrl(sport, league, endpoint = 'scoreboard') {
+  const cfg = ALL_SPORTS[sport];
+  return cfg ? `${cfg.baseUrl}/${league}/${endpoint}` : null;
+}
+
+function buildStandingsUrl(sport, league) {
+  return ALL_SPORTS[sport] ? `https://site.api.espn.com/apis/v2/sports/${sport}/${league}/standings` : null;
+}
+
+async function fetchRetry(url, maxRetries = 2) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const r = await fetch(url);
+      if (r.ok) return r;
+      if (r.status >= 500 && attempt < maxRetries) {
+        await new Promise(res => setTimeout(res, 800 * attempt));
+        continue;
+      }
+      return r;
+    } catch (e) {
+      if (attempt === maxRetries) throw e;
+      await new Promise(res => setTimeout(res, 800 * attempt));
+    }
+  }
+}
+
+// ============================================
+// ESPN FUNCTIONS
+// ============================================
+
+async function fetchGames(leagueInput) {
+  const resolved = resolveLeague(leagueInput);
+  if (!resolved) {
+    // Try as direct sport
+    if (ALL_SPORTS[leagueInput]) {
+      const league = Object.keys(ALL_SPORTS[leagueInput].leagues)[0];
+      return fetchGamesForLeague(leagueInput, league);
+    }
+    return { error: `Unknown league: ${leagueInput}. Try "Premier League", "NBA", "La Liga", etc.` };
+  }
+  return fetchGamesForLeague(resolved.sport, resolved.league);
+}
+
+async function fetchGamesForLeague(sport, league) {
+  const url = buildUrl(sport, league, 'scoreboard');
+  if (!url) return { error: `Could not build URL for ${sport}/${league}` };
+
+  try {
+    const response = await fetchRetry(url);
+    if (!response.ok) throw new Error(`ESPN API error: ${response.status}`);
+    const data = await response.json();
+
+    const games = (data.events || []).map(event => {
+      const comp = event.competitions?.[0];
+      const home = comp?.competitors?.find(c => c.homeAway === 'home');
+      const away = comp?.competitors?.find(c => c.homeAway === 'away');
+      return {
+        id: event.id,
+        name: event.name,
+        status: {
+          state: event.status?.type?.state,
+          detail: event.status?.type?.detail,
+          clock: event.status?.displayClock,
+        },
+        homeTeam: home ? { name: home.team?.displayName, abbreviation: home.team?.abbreviation, score: home.score || '0' } : null,
+        awayTeam: away ? { name: away.team?.displayName, abbreviation: away.team?.abbreviation, score: away.score || '0' } : null,
+        venue: comp?.venue?.fullName,
+        startTime: event.date,
+      };
+    });
+
+    return {
+      leagueName: ALL_SPORTS[sport]?.leagues[league] || league,
+      totalGames: games.length,
+      liveGames: games.filter(g => g.status.state === 'in'),
+      upcomingGames: games.filter(g => g.status.state === 'pre'),
+      completedGames: games.filter(g => g.status.state === 'post'),
+      allGames: games.slice(0, 15),
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function fetchLeagueStandings(leagueInput) {
+  const resolved = resolveLeague(leagueInput);
+  if (!resolved) return { error: `Unknown league: ${leagueInput}` };
+
+  const url = buildStandingsUrl(resolved.sport, resolved.league);
+  if (!url) return { error: `Standings not available for ${leagueInput}` };
+
+  try {
+    const response = await fetchRetry(url);
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    const data = await response.json();
+
+    const standings = [];
+    const groups = data.children || [data];
+    for (const group of groups) {
+      const entries = group.standings?.entries || [];
+      for (const entry of entries) {
+        const stats = {};
+        (entry.stats || []).forEach(s => { stats[s.name] = s.value; });
+        standings.push({
+          group: group.name || '',
+          rank: stats.playoffSeed || stats.rank || 'N/A',
+          team: entry.team?.displayName,
+          played: stats.gamesPlayed || 'N/A',
+          wins: stats.wins || 0,
+          draws: stats.ties || stats.draws || 0,
+          losses: stats.losses || 0,
+          points: stats.points || 'N/A',
+          winPct: stats.winPercent ? (stats.winPercent * 100).toFixed(1) + '%' : 'N/A',
+          goalsFor: stats.pointsFor || stats.goalsFor || 'N/A',
+          goalsAgainst: stats.pointsAgainst || stats.goalsAgainst || 'N/A',
+        });
+      }
+    }
+
+    return {
+      leagueName: ALL_SPORTS[resolved.sport]?.leagues[resolved.league],
+      standings: standings.slice(0, 25),
+      totalTeams: standings.length,
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function fetchGameStats(leagueInput, gameId) {
+  if (!gameId) return { error: 'game_id is required. Use get_games first to find the match.' };
+  const resolved = resolveLeague(leagueInput);
+  if (!resolved) return { error: `Unknown league: ${leagueInput}` };
+
+  const cfg = ALL_SPORTS[resolved.sport];
+  if (!cfg) return { error: `Unknown sport: ${resolved.sport}` };
+  const url = `${cfg.baseUrl}/${resolved.league}/summary?event=${gameId}`;
+
+  try {
+    const response = await fetchRetry(url);
+    if (!response.ok) throw new Error(`ESPN API error: ${response.status}`);
+    const data = await response.json();
+
+    const boxscore = data.boxscore || {};
+    const homeTeam = boxscore.teams?.[0];
+    const awayTeam = boxscore.teams?.[1];
+    if (!homeTeam || !awayTeam) return { error: `No stats available for game ${gameId}. Match may not have started.` };
+
+    const extractStats = (teamStats) => {
+      const stats = {};
+      (teamStats || []).forEach(stat => {
+        const key = stat.name?.toLowerCase()?.replace(/\s+/g, '_') || stat.label?.toLowerCase()?.replace(/\s+/g, '_');
+        if (key) stats[key] = parseFloat(stat.displayValue) || stat.displayValue;
+      });
+      return stats;
+    };
+
+    const result = {
+      leagueName: ALL_SPORTS[resolved.sport]?.leagues[resolved.league],
+      game_id: gameId,
+      home: { name: homeTeam?.team?.displayName, score: parseInt(homeTeam?.score) || 0, stats: extractStats(homeTeam?.statistics) },
+      away: { name: awayTeam?.team?.displayName, score: parseInt(awayTeam?.score) || 0, stats: extractStats(awayTeam?.statistics) },
+      fetchedAt: new Date().toISOString(),
+    };
+
+    if (data.keyEvents?.length) {
+      result.key_events = data.keyEvents.slice(0, 15).map(e => ({
+        type: e.type?.text || 'event',
+        time: e.clock?.displayValue || e.period?.displayValue,
+        team: e.team?.abbreviation,
+        description: e.text,
+      }));
+    }
+    if (data.rosters?.length) {
+      result.lineups = {};
+      data.rosters.forEach(r => {
+        const abbr = r.team?.abbreviation;
+        if (abbr) result.lineups[abbr] = (r.roster || []).slice(0, 15).map(p => `${p.athlete?.displayName} (${p.position?.abbreviation || 'N/A'})`);
+      });
+    }
+    return result;
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function searchTeam(teamName) {
+  const searchLower = teamName.toLowerCase().trim();
+  const results = [];
+  // Reduced to 12 priority leagues for server-side speed (#6)
+  const priority = [
+    { sport: 'soccer', league: 'eng.1' }, { sport: 'soccer', league: 'esp.1' },
+    { sport: 'soccer', league: 'ger.1' }, { sport: 'soccer', league: 'ita.1' },
+    { sport: 'soccer', league: 'fra.1' }, { sport: 'soccer', league: 'uefa.champions' },
+    { sport: 'basketball', league: 'nba' }, { sport: 'football', league: 'nfl' },
+    { sport: 'hockey', league: 'nhl' }, { sport: 'soccer', league: 'por.1' },
+    { sport: 'soccer', league: 'sau.1' }, { sport: 'soccer', league: 'rsa.1' },
+  ];
+
+  // Search in batches of 6, early exit when found
+  for (let i = 0; i < priority.length && results.length < 8; i += 6) {
+    const batch = priority.slice(i, i + 6);
+    const batchResults = await Promise.all(batch.map(async ({ sport, league }) => {
+      try {
+        const url = buildUrl(sport, league, 'teams');
+        const r = await fetch(url);
+        if (!r.ok) return [];
+        const data = await r.json();
+        return (data.sports?.[0]?.leagues?.[0]?.teams || [])
+          .filter(t => {
+            const name = t.team.displayName?.toLowerCase() || '';
+            const abbr = t.team.abbreviation?.toLowerCase() || '';
+            return name.includes(searchLower) || abbr === searchLower || searchLower.includes(name.split(' ').pop());
+          })
+          .map(t => ({
+            id: t.team.id, name: t.team.displayName, abbreviation: t.team.abbreviation,
+            sport, league, leagueName: ALL_SPORTS[sport]?.leagues[league],
+          }));
+      } catch (e) { return []; }
+    }));
+    batchResults.flat().forEach(m => {
+      if (!results.find(r => r.id === m.id && r.league === m.league)) results.push(m);
+    });
+    // Early exit: if we found results in first batch, don't search more (#6)
+    if (results.length > 0) break;
+  }
+
+  return { query: teamName, results: results.slice(0, 8), totalFound: results.length };
+}
+
+async function fetchTeamStats(teamName, leagueInput = null) {
+  const searchResults = await searchTeam(teamName);
+  if (searchResults.totalFound === 0) return { error: `Team "${teamName}" not found. Try the full name like "Manchester United".` };
+
+  let team = searchResults.results[0];
+  if (leagueInput) {
+    const resolved = resolveLeague(leagueInput);
+    if (resolved) {
+      const match = searchResults.results.find(t => t.sport === resolved.sport && t.league === resolved.league);
+      if (match) team = match;
+    }
+  }
+
+  const url = buildUrl(team.sport, team.league, `teams/${team.id}`);
+  try {
+    const response = await fetchRetry(url);
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    const data = await response.json();
+    const td = data.team;
+    const record = td.record?.items?.[0];
+    const stats = {};
+    (record?.stats || []).forEach(s => { stats[s.name] = s.value; });
+    const wins = stats.wins || 0;
+    const losses = stats.losses || 0;
+    const total = wins + losses;
+
+    return {
+      team: { name: td.displayName, abbreviation: td.abbreviation, sport: team.sport, league: team.league, leagueName: ALL_SPORTS[team.sport]?.leagues[team.league] },
+      record: { overall: record?.summary || 'N/A', wins, losses, winPercentage: total > 0 ? ((wins / total) * 100).toFixed(1) + '%' : 'N/A', pointsFor: stats.pointsFor || 'N/A', pointsAgainst: stats.pointsAgainst || 'N/A' },
+      standings: td.standingSummary || 'N/A',
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function fetchHeadToHead(team1Name, team2Name, leagueInput = null) {
+  const [t1, t2] = await Promise.all([fetchTeamStats(team1Name, leagueInput), fetchTeamStats(team2Name, leagueInput)]);
+  if (t1.error) return { error: `Team 1: ${t1.error}` };
+  if (t2.error) return { error: `Team 2: ${t2.error}` };
+  return {
+    team1: { name: t1.team?.name, record: t1.record?.overall, winPct: t1.record?.winPercentage },
+    team2: { name: t2.team?.name, record: t2.record?.overall, winPct: t2.record?.winPercentage },
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+function listAvailableLeagues(sportFilter = null) {
+  const leagues = [];
+  for (const [sport, config] of Object.entries(ALL_SPORTS)) {
+    if (sportFilter && sport !== sportFilter) continue;
+    for (const [id, name] of Object.entries(config.leagues)) {
+      leagues.push({ sport, sportName: config.name, leagueId: id, leagueName: name });
+    }
+  }
+  return {
+    totalLeagues: leagues.length,
+    totalSports: Object.keys(ALL_SPORTS).length,
+    leagues: leagues.slice(0, 50),
+    allSports: Object.entries(ALL_SPORTS).map(([id, c]) => ({ id, name: c.name, leagueCount: Object.keys(c.leagues).length })),
+  };
+}
+
+function calculatePayout(odds, stake) {
+  const profit = odds > 0 ? (stake * odds) / 100 : (stake * 100) / Math.abs(odds);
+  const impliedProb = odds > 0 ? 100 / (odds + 100) : Math.abs(odds) / (Math.abs(odds) + 100);
+  return { odds, stake, profit: profit.toFixed(2), totalReturn: (stake + profit).toFixed(2), impliedProbability: (impliedProb * 100).toFixed(1) + '%' };
+}
+
+// ============================================
+// TOOL DEFINITIONS (for Claude API)
+// ============================================
+const TOOL_DEFINITIONS = [
+  {
+    name: 'get_games',
+    description: 'Fetch live, upcoming, and completed games for a league. Returns scores, teams, match times, and game IDs (use IDs with get_game_stats for detailed stats).',
+    input_schema: { type: 'object', properties: { league: { type: 'string', description: 'League name (e.g., "Premier League", "NBA", "La Liga", "Champions League", "UFC")' } }, required: ['league'] },
+  },
+  {
+    name: 'get_standings',
+    description: 'Fetch current league standings/table with team rankings, wins, losses, points.',
+    input_schema: { type: 'object', properties: { league: { type: 'string', description: 'League name' } }, required: ['league'] },
+  },
+  {
+    name: 'get_game_stats',
+    description: 'Get detailed match statistics: possession, shots, corners, cards, key events (goals), lineups. Requires a game_id from get_games.',
+    input_schema: { type: 'object', properties: { league: { type: 'string' }, game_id: { type: 'string', description: 'Game ID from get_games results' } }, required: ['league', 'game_id'] },
+  },
+  {
+    name: 'search_team',
+    description: 'Search for a team by name across major leagues worldwide.',
+    input_schema: { type: 'object', properties: { team_name: { type: 'string' } }, required: ['team_name'] },
+  },
+  {
+    name: 'get_team_stats',
+    description: 'Get detailed statistics for a team: record, win percentage, standings.',
+    input_schema: { type: 'object', properties: { team_name: { type: 'string' }, league: { type: 'string', description: 'Optional: specify league if ambiguous' } }, required: ['team_name'] },
+  },
+  {
+    name: 'get_head_to_head',
+    description: 'Compare two teams — shows records and win percentages for both.',
+    input_schema: { type: 'object', properties: { team1: { type: 'string' }, team2: { type: 'string' }, league: { type: 'string' } }, required: ['team1', 'team2'] },
+  },
+  {
+    name: 'list_leagues',
+    description: 'List all available sports and leagues. Use when users ask what sports are available.',
+    input_schema: { type: 'object', properties: { sport: { type: 'string', description: 'Optional: filter by sport' } }, required: [] },
+  },
+  {
+    name: 'calculate_bet_payout',
+    description: 'Calculate potential payout for a bet given odds and stake.',
+    input_schema: { type: 'object', properties: { odds: { type: 'number' }, stake: { type: 'number' } }, required: ['odds', 'stake'] },
+  },
+];
+
+// ============================================
+// TOOL EXECUTOR
+// ============================================
+async function executeTool(name, input) {
+  switch (name) {
+    case 'get_games': return await fetchGames(input.league);
+    case 'get_standings': return await fetchLeagueStandings(input.league);
+    case 'get_game_stats': return await fetchGameStats(input.league, input.game_id);
+    case 'search_team': return await searchTeam(input.team_name);
+    case 'get_team_stats': return await fetchTeamStats(input.team_name, input.league);
+    case 'get_head_to_head': return await fetchHeadToHead(input.team1, input.team2, input.league);
+    case 'list_leagues': return listAvailableLeagues(input.sport);
+    case 'calculate_bet_payout': return calculatePayout(input.odds, input.stake);
+    default: return { error: `Unknown tool: ${name}` };
+  }
+}
+
+// Truncate large results to save tokens
+function truncateResult(result) {
+  const str = JSON.stringify(result);
+  if (str.length > 8000) {
+    // Trim arrays
+    if (result.allGames?.length > 8) result.allGames = result.allGames.slice(0, 8);
+    if (result.liveGames?.length > 5) result.liveGames = result.liveGames.slice(0, 5);
+    if (result.upcomingGames?.length > 8) result.upcomingGames = result.upcomingGames.slice(0, 8);
+    if (result.completedGames?.length > 3) result.completedGames = result.completedGames.slice(0, 3);
+    if (result.standings?.length > 20) result.standings = result.standings.slice(0, 20);
+    if (result.results?.length > 8) result.results = result.results.slice(0, 8);
+  }
+  return result;
+}
+
+
+// ============================================
+// BetExpert — System Prompt (matches full app design)
+// Single source of truth for widget personality & rules
+// ============================================
+
+const SYSTEM_PROMPT = `You are BetExpert, the AI sports betting assistant on BwanaBet.com — Zambia's premier betting platform. You have ONE absolute rule: EVERY statistic MUST come directly from tool results.
+
+###############################################################################
+##  MANDATORY DATA INTEGRITY SYSTEM                                          ##
+###############################################################################
+
+## THE GOLDEN RULE
+
+If you cannot point to the EXACT data in tool results where a number appears, you CANNOT use that number.
+
+NO TOOL DATA = NO CLAIM
+
+## HOW DATA INTEGRITY WORKS
+
+When get_standings returns:
+  { team: "Napoli", played: 15, wins: 10, draws: 1, losses: 4, goalsFor: 22, goalsAgainst: 13, points: 31 }
+
+You write:
+  **Napoli**
+  - Position: 2nd in Serie A
+  - Record: 10-1-4 (15 games)
+  - Points: 31
+  - Goals: 22 scored, 13 conceded
+  - Goal difference: +9
+  - Win rate: 66.7%
+
+  Ready to go?
+
+The numbers 10, 1, 4, 15, 31, 22, 13 ALL appear in the tool result. You can use them.
+
+## WHAT YOU CANNOT DO
+
+Tool returns: { wins: 10, draws: 1, losses: 4, points: 31 }
+
+WRONG: "Napoli have 12 wins" ← 12 is NOT in the data. FORBIDDEN.
+WRONG: "Napoli have 43 points" ← 43 is NOT in the data. FORBIDDEN.
+WRONG: "Napoli played 20 games" ← 20 is NOT in the data. FORBIDDEN.
+
+If you write a number that doesn't exist in tool results, you are FABRICATING DATA.
+Users bet real money. Fabrication = lost money = broken trust.
+
+## BEFORE YOU WRITE ANY NUMBER
+
+Ask yourself:
+1. Can I find this EXACT number in the tool results?
+2. Which tool result contains this number?
+
+If you cannot answer both questions, DO NOT WRITE THAT NUMBER.
+
+## DO NOT NARRATE YOUR TOOL USAGE
+
+WRONG (never do this):
+"Let me check the standings for you..."
+"I found the latest results..."
+"Let me search for that..."
+"The tool results show..."
+"Searching..."
+
+RIGHT (just give the answer directly - no preamble):
+**Napoli**
+- Position: 2nd in Serie A
+- Record: 10-1-4 (15 games)
+...
+
+Go directly to the formatted response. No preamble. No narration. No commentary.
+
+###############################################################################
+##  INTERACTIVE CONVERSATION DESIGN                                          ##
+###############################################################################
+
+## YOUR ROLE
+
+You are NOT a passive stats lookup. You are an ACTIVE betting assistant that guides users toward placing bets on BwanaBet.com. Every interaction should move the user closer to a bet.
+
+## ONBOARDING (first interaction or greetings)
+
+If user says hello/hi/hey, respond:
+"Hey! What do you prefer?"
+Then suggest: Sports Betting or Casino Games
+
+If they choose sports betting, ask:
+"How do you want me to explain things? **Simple:** One clear pick with step-by-step instructions. **In-Depth:** Full stats, multiple options, betting jargon included."
+
+Adapt ALL future responses to their choice.
+
+## GIVING PICKS
+
+When suggesting a bet, ALWAYS include:
+1. **Match**: Team A vs Team B
+2. **Time**: When the match starts
+3. **My Pick**: The specific bet (e.g., BTTS Yes, Over 2.5, Home Win)
+4. **Odds**: If available from tool data
+5. **Confidence**: Low / Medium / High (based on data strength)
+6. **Why this pick**: 1-2 sentences explaining the reasoning from tool data
+7. **How to place this bet on BwanaBet**:
+   1. Open BwanaBet and go to Sports → Football → [League]
+   2. Find "[Team A] vs [Team B]"
+   3. Look for "[Bet Type]" and tap "[Selection]"
+   4. Enter your bet amount (start small, like ZMW 10-20)
+   5. Tap "Place Bet" to confirm
+
+Always end with: **Ready to go?**
+
+## RESPONSE FORMAT FOR STATS
+
+**[Team Name]**
+- Position: [number from data] in [league]
+- Record: [W]-[D]-[L] ([total] games)
+- Points: [number from data]
+- Goals: [GF] scored, [GA] conceded
+- Goal difference: [calculated GF-GA]
+- Win rate: [calculated W ÷ total × 100]%
+
+Ready to go?
+
+## POSITION RULE
+
+ONLY state a league position if:
+1. Tool result explicitly shows position/rank
+2. OR you can count the position from a complete standings table
+
+If position is not clearly shown:
+- Position: Not available in current data
+
+DO NOT guess position based on points alone.
+
+## MATHEMATICAL VALIDATION
+
+Before responding, CHECK YOUR MATH:
+
+1. Total games = Wins + Draws + Losses
+   - If data says 15 games and you write 10W-1D-4L, check: 10+1+4=15 ✓
+
+2. Points = (Wins × 3) + Draws (for soccer)
+   - If data says 31 points and you write 10W-1D, check: (10×3)+1=31 ✓
+
+3. Goal difference = Goals For - Goals Against
+   - If data says "+9 GD" and "22:13", check: 22-13=9 ✓
+
+If the math doesn't work, THE DATA IS WRONG. Do not use it.
+
+###############################################################################
+##  TOOLS                                                                    ##
+###############################################################################
+
+You have these tools for REAL-TIME data. ALWAYS use them — never guess:
+
+- **get_games**: Live/upcoming/completed matches. Returns game IDs for use with get_game_stats.
+- **get_standings**: Current league table with points, wins, losses, draws.
+- **get_game_stats**: Detailed match stats (possession, corners, cards, shots, lineups, key events). Requires game_id from get_games.
+- **search_team**: Find a team by name across all major leagues.
+- **get_team_stats**: Win/loss record, win percentage for a specific team.
+- **get_head_to_head**: Compare two teams side by side.
+- **list_leagues**: Show all available sports and leagues.
+- **calculate_bet_payout**: Calculate returns from odds + stake.
+
+Use get_games FIRST when asked about matches, then get_game_stats for details.
+Use get_standings for league tables.
+Use get_team_stats or get_head_to_head for team analysis.
+
+###############################################################################
+##  HANDLING TOOL RESULTS                                                    ##
+###############################################################################
+
+### If tools return clear data:
+Report it with formatting. No preamble. Drive toward a bet.
+
+### If tools return conflicting data:
+"I found inconsistent information. Please check bwanabet.com for the latest odds and fixtures."
+
+### If tools return errors or no data:
+"I couldn't find current data for [league/team]. Try a different league or check back closer to match time."
+
+DO NOT GUESS. DO NOT FILL IN. DO NOT APPROXIMATE.
+
+###############################################################################
+##  FORBIDDEN ACTIONS                                                        ##
+###############################################################################
+
+NEVER write:
+- Any number not in tool results
+- "approximately" or "around" followed by a number
+- "likely" or "probably" with any statistic
+- "unbeaten in X" unless tool data says EXACTLY this
+- "X wins in a row" unless tool data says EXACTLY this
+- "good form" or "poor form" unless data clearly shows this
+- Betting recommendations not backed by tool data
+- Tool narration ("Let me search...", "I found...", "Perfect!", "Searching...")
+- Manager/coaching news unless explicitly asked
+- Never fabricate urgency ("bonus expires soon", "limited time")
+
+###############################################################################
+##  BWANABET CONTEXT                                                         ##
+###############################################################################
+
+## YOU ARE ON BWANABET.COM
+
+- Users can place bets RIGHT HERE on this website
+- When suggesting picks, always include step-by-step BwanaBet placement instructions
+- Suggest small stakes for beginners (ZMW 10-20)
+- The Zambian market favors: Premier League, Champions League, La Liga, and accumulator bets
+- Currency is ZMW (Zambian Kwacha)
+- BwanaBet also has: Casino, Live Casino, Aviator, Virtual Sports, Royal Win
+
+## PROMOTING BWANABET FEATURES (naturally, not as spam)
+
+When relevant:
+- "While you wait for the match, BwanaBet has K5 free spins daily"
+- "You can also bet live on this match at BwanaBet → Live"
+- "BwanaBet's Aviator game is popular — want to know how it works?"
+
+Only mention when naturally fits the conversation. Never force it.
+
+## ACCOUNT/SUPPORT ISSUES
+
+For deposits, withdrawals, login issues, account problems:
+"For account help, tap 'Talk to support' below — the BwanaBet team will assist you."
+You only handle sports data and betting analysis.
+
+## RESPONSIBLE GAMBLING
+
+- Include a brief reminder on EVERY betting suggestion: "Remember: only bet what you can afford to lose."
+- Suggest starting with small stakes (ZMW 10-20) for beginners
+- Never pressure users to bet or increase stakes
+- If a user seems distressed about losses, encourage them to take a break
+
+###############################################################################
+##  CASINO GAMES                                                             ##
+###############################################################################
+
+For casino questions (roulette, slots, blackjack, aviator):
+- Use general knowledge about game rules, RTP percentages, basic strategy
+- No tools needed for casino
+- Guide them to BwanaBet's casino: "You can try this at BwanaBet → Casino"
+- For Aviator: explain the cash-out mechanic, suggest conservative strategies
+
+###############################################################################
+##  OTHER RULES                                                              ##
+###############################################################################
+
+- NO emojis
+- Currency: ZMW (Zambian Kwacha)
+- End stat responses with "Ready to go?"
+- Keep responses focused (5-6 lines for stats, longer for picks with placement instructions)
+- Never fabricate urgency
+- Be confident and direct — you are the expert
+- Adapt complexity to the user's level (simple vs in-depth based on their choice)
+
+###############################################################################
+##  FINAL CHECK BEFORE EVERY RESPONSE                                       ##
+###############################################################################
+
+[ ] No narration or preamble (just the answer)
+[ ] Every number appears EXACTLY in tool results
+[ ] Math validates (W+D+L = total, W×3+D = points for soccer)
+[ ] No interpretation beyond what data shows
+[ ] Includes "Ready to go?" or a clear call to action
+[ ] Includes BwanaBet placement instructions if suggesting a bet
+[ ] Includes responsible gambling reminder if suggesting a bet
+[ ] No fabricated data, no guessing, no approximation`;
+
+
+
+// ============================================
+// WIDGET CHAT HANDLER
+// ============================================
+
+const MAX_TOOL_LOOPS = 6;
 const MAX_TOKENS = 1536;
 
-// ---- Monitoring helpers ----
 async function supabaseInsert(table, data) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
@@ -27,31 +809,23 @@ function estimateCost(inp, out) {
   return ((inp / 1e6) * 3.0) + ((out / 1e6) * 15.0);
 }
 
-// Rate limit: 15 requests per minute per session
 async function checkRateLimit(sessionId) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) return true; // If no Supabase, skip rate limiting
-
+  if (!url || !key) return true;
   try {
     const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
     const resp = await fetch(
       `${url}/rest/v1/monitor_requests?select=id&session_id=eq.${sessionId}&created_at=gte.${oneMinuteAgo}`,
       { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
     );
-    if (!resp.ok) return true; // Fail open — don't block users if Supabase is down
+    if (!resp.ok) return true;
     const rows = await resp.json();
     return rows.length < 15;
-  } catch {
-    return true; // Fail open
-  }
+  } catch (e) { return true; }
 }
 
-// ============================================
-// HANDLER
-// ============================================
 export default async function handler(req, res) {
-  // CORS
   const origin = req.headers.origin || '';
   const allowed = ['https://bwanabet.com', 'https://www.bwanabet.com', 'https://bet-assist.vercel.app'];
   if (process.env.WIDGET_DEV === 'true') allowed.push('http://localhost:3000');
@@ -72,13 +846,11 @@ export default async function handler(req, res) {
 
   if (!messages?.length) return res.status(400).json({ error: 'Missing messages' });
 
-  // #2 server: Rate limit — 15 requests/minute per session via Supabase
   const rateLimitOk = await checkRateLimit(sessionId);
   if (!rateLimitOk) {
-    return res.status(429).json({ error: 'Too many requests. Please wait a moment before asking again.' });
+    return res.status(429).json({ error: 'Too many requests. Please wait a moment.' });
   }
 
-  // Trim to last 20 messages
   let conversationMessages = messages.slice(-20);
   const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
   let totalInputTokens = 0;
@@ -86,21 +858,12 @@ export default async function handler(req, res) {
   let allToolsCalled = [];
 
   try {
-    // ---- Tool loop: call Claude, execute tools, repeat ----
     let loopCount = 0;
     let finalText = '';
 
     while (loopCount < MAX_TOOL_LOOPS) {
       loopCount++;
       console.log(`[widget] Loop ${loopCount}, messages: ${conversationMessages.length}`);
-
-      const anthropicBody = {
-        model,
-        max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
-        messages: conversationMessages,
-        tools: TOOL_DEFINITIONS,
-      };
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -109,7 +872,13 @@ export default async function handler(req, res) {
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
         },
-        body: JSON.stringify(anthropicBody),
+        body: JSON.stringify({
+          model,
+          max_tokens: MAX_TOKENS,
+          system: SYSTEM_PROMPT,
+          messages: conversationMessages,
+          tools: TOOL_DEFINITIONS,
+        }),
       });
 
       const data = await response.json();
@@ -128,17 +897,14 @@ export default async function handler(req, res) {
       totalInputTokens += data.usage?.input_tokens || 0;
       totalOutputTokens += data.usage?.output_tokens || 0;
 
-      // Extract text blocks
       const textBlocks = (data.content || []).filter(b => b.type === 'text');
       const toolBlocks = (data.content || []).filter(b => b.type === 'tool_use');
 
-      // If no tool calls, we're done
       if (data.stop_reason !== 'tool_use' || toolBlocks.length === 0) {
         finalText = textBlocks.map(b => b.text).join('\n');
         break;
       }
 
-      // ---- Execute tools in parallel ----
       console.log(`[widget] Executing ${toolBlocks.length} tools:`, toolBlocks.map(t => t.name).join(', '));
 
       const toolResults = await Promise.all(toolBlocks.map(async (toolBlock) => {
@@ -161,12 +927,10 @@ export default async function handler(req, res) {
         }
       }));
 
-      // Add assistant's response (with tool calls) and tool results to conversation
       conversationMessages.push({ role: 'assistant', content: data.content });
       conversationMessages.push({ role: 'user', content: toolResults });
     }
 
-    // ---- Check for timeout ----
     if (loopCount >= MAX_TOOL_LOOPS && !finalText) {
       finalText = "I tried to look that up but it's taking too long. Try asking something more specific.";
     }
@@ -174,7 +938,6 @@ export default async function handler(req, res) {
     const durationMs = Date.now() - startTime;
     const costUsd = estimateCost(totalInputTokens, totalOutputTokens);
 
-    // ---- Fire-and-forget monitoring ----
     const userMsg = messages.filter(m => m.role === 'user').pop();
     const userContent = (typeof userMsg?.content === 'string' ? userMsg.content : '').slice(0, 2000);
 
@@ -203,7 +966,7 @@ export default async function handler(req, res) {
       }) : Promise.resolve(),
     ]).catch(() => {});
 
-    console.log(`[widget] Done in ${durationMs}ms, ${loopCount} loops, ${allToolsCalled.length} tools, ${totalInputTokens}+${totalOutputTokens} tokens, $${costUsd.toFixed(4)}`);
+    console.log(`[widget] Done in ${durationMs}ms, ${loopCount} loops, ${allToolsCalled.length} tools, $${costUsd.toFixed(4)}`);
 
     return res.status(200).json({
       text: finalText,
