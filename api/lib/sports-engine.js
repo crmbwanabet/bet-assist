@@ -321,21 +321,18 @@ async function fetchGameStats(leagueInput, gameId) {
 async function searchTeam(teamName) {
   const searchLower = teamName.toLowerCase().trim();
   const results = [];
-  // Search priority leagues only to stay within Vercel timeout
+  // Reduced to 12 priority leagues for server-side speed (#6)
   const priority = [
     { sport: 'soccer', league: 'eng.1' }, { sport: 'soccer', league: 'esp.1' },
     { sport: 'soccer', league: 'ger.1' }, { sport: 'soccer', league: 'ita.1' },
-    { sport: 'soccer', league: 'fra.1' }, { sport: 'soccer', league: 'por.1' },
-    { sport: 'soccer', league: 'ned.1' }, { sport: 'soccer', league: 'uefa.champions' },
-    { sport: 'soccer', league: 'sau.1' }, { sport: 'soccer', league: 'rsa.1' },
+    { sport: 'soccer', league: 'fra.1' }, { sport: 'soccer', league: 'uefa.champions' },
     { sport: 'basketball', league: 'nba' }, { sport: 'football', league: 'nfl' },
-    { sport: 'baseball', league: 'mlb' }, { sport: 'hockey', league: 'nhl' },
-    { sport: 'soccer', league: 'arg.1' }, { sport: 'soccer', league: 'bra.1' },
-    { sport: 'soccer', league: 'mex.1' }, { sport: 'soccer', league: 'usa.1' },
+    { sport: 'hockey', league: 'nhl' }, { sport: 'soccer', league: 'por.1' },
+    { sport: 'soccer', league: 'sau.1' }, { sport: 'soccer', league: 'rsa.1' },
   ];
 
-  // Search in batches of 6
-  for (let i = 0; i < priority.length && results.length < 10; i += 6) {
+  // Search in batches of 6, early exit when found
+  for (let i = 0; i < priority.length && results.length < 8; i += 6) {
     const batch = priority.slice(i, i + 6);
     const batchResults = await Promise.all(batch.map(async ({ sport, league }) => {
       try {
@@ -358,9 +355,11 @@ async function searchTeam(teamName) {
     batchResults.flat().forEach(m => {
       if (!results.find(r => r.id === m.id && r.league === m.league)) results.push(m);
     });
+    // Early exit: if we found results in first batch, don't search more (#6)
+    if (results.length > 0) break;
   }
 
-  return { query: teamName, results: results.slice(0, 10), totalFound: results.length };
+  return { query: teamName, results: results.slice(0, 8), totalFound: results.length };
 }
 
 async function fetchTeamStats(teamName, leagueInput = null) {
