@@ -55,8 +55,16 @@
   }
 
   // ============================================
-  // BWANABET DEEP LINKS
+  // BWANABET LEAGUE-SPECIFIC DEEP LINKS
   // ============================================
+  const BWANABET_LEAGUE_LINKS = {
+    'Premier League': 'https://bwanabet.com/en/sports/prematch/Football/England/Premier%20League',
+    'Serie A': 'https://bwanabet.com/en/sports/prematch/Football/Italy/Serie%20A',
+    'La Liga': 'https://bwanabet.com/en/sports/prematch/Football/Spain/La%20Liga',
+    'Bundesliga': 'https://bwanabet.com/en/sports/prematch/Football/Germany/Bundesliga',
+    'Champions League': 'https://bwanabet.com/en/sports/prematch/Football/Europe/UEFA%20Champions%20League',
+  };
+
   const BWANA_LINKS = {
     sport: 'https://bwanabet.com/en/sport',
     football: 'https://bwanabet.com/en/sport/football',
@@ -67,9 +75,186 @@
     register: 'https://bwanabet.com/en/register',
   };
 
+  const TEAM_TO_LEAGUE = {
+    'arsenal': 'Premier League', 'chelsea': 'Premier League', 'liverpool': 'Premier League',
+    'manchester united': 'Premier League', 'manchester city': 'Premier League', 'man utd': 'Premier League',
+    'man city': 'Premier League', 'tottenham': 'Premier League', 'spurs': 'Premier League',
+    'newcastle': 'Premier League', 'aston villa': 'Premier League', 'west ham': 'Premier League',
+    'brighton': 'Premier League', 'wolves': 'Premier League', 'everton': 'Premier League',
+    'crystal palace': 'Premier League', 'fulham': 'Premier League', 'nottingham forest': 'Premier League',
+    'napoli': 'Serie A', 'inter': 'Serie A', 'inter milan': 'Serie A', 'ac milan': 'Serie A',
+    'juventus': 'Serie A', 'roma': 'Serie A', 'lazio': 'Serie A', 'atalanta': 'Serie A',
+    'real madrid': 'La Liga', 'barcelona': 'La Liga', 'atletico madrid': 'La Liga',
+    'sevilla': 'La Liga', 'villarreal': 'La Liga', 'real betis': 'La Liga',
+    'bayern munich': 'Bundesliga', 'bayern': 'Bundesliga', 'dortmund': 'Bundesliga',
+    'rb leipzig': 'Bundesliga', 'leverkusen': 'Bundesliga',
+  };
+
+  function detectLeague(text) {
+    const lower = text.toLowerCase();
+    const patterns = [
+      { re: /premier league|epl/i, league: 'Premier League' },
+      { re: /serie a/i, league: 'Serie A' },
+      { re: /la liga|laliga/i, league: 'La Liga' },
+      { re: /bundesliga/i, league: 'Bundesliga' },
+      { re: /champions league|ucl/i, league: 'Champions League' },
+    ];
+    for (const { re, league } of patterns) {
+      if (re.test(lower)) return league;
+    }
+    for (const [team, league] of Object.entries(TEAM_TO_LEAGUE)) {
+      if (lower.includes(team)) return league;
+    }
+    return null;
+  }
+
+  function getLeagueLink(league) {
+    return BWANABET_LEAGUE_LINKS[league] || BWANA_LINKS.sport;
+  }
+
   // ============================================
-  // CSS
+  // USER PREFERENCE TRACKING
   // ============================================
+  let userPreference = state.preferences?.mode || null; // 'sports' | 'casino' | null
+
+  // ============================================
+  // QUICK ACTIONS — interactive, bet-driving design
+  // ============================================
+  const DEFAULT_ACTIONS = [
+    { text: 'Sports Betting', q: 'I want to try sports betting' },
+    { text: 'Casino Games', q: 'Show me casino games' },
+    { text: 'How betting works', q: 'Explain how betting works' },
+    { text: 'Winning tips', q: 'Give me tips to win more' },
+  ];
+
+  function getSmartActions(lastBotMsg) {
+    if (!lastBotMsg) return DEFAULT_ACTIONS;
+    const m = lastBotMsg.toLowerCase();
+    const detectedLeague = detectLeague(lastBotMsg);
+    const leagueLink = detectedLeague ? getLeagueLink(detectedLeague) : null;
+
+    // ---- MATCH DETECTED (Team vs Team in response) ----
+    const matchPattern = /\*\*([A-Za-z\s]+)\s+vs\s+([A-Za-z\s]+)\*\*/gi;
+    const matchFound = [...lastBotMsg.matchAll(matchPattern)];
+    if (matchFound.length > 0) {
+      const home = matchFound[0][1].trim();
+      const away = matchFound[0][2].trim();
+      const actions = [
+        { text: 'How do I place this bet?', q: `Show me how to place a bet on ${home} vs ${away}` },
+        { text: 'Show me a different match', q: 'Show me other matches today' },
+      ];
+      if (leagueLink && detectedLeague) {
+        actions.push({ text: `Go to ${detectedLeague}`, q: null, link: leagueLink });
+      }
+      actions.push({ text: 'Play casino', q: 'Show me casino games' });
+      return actions.slice(0, 4);
+    }
+
+    // ---- TEAM STATS (position, record, points) ----
+    if (m.includes('position:') || m.includes('record:') || m.includes('points:') || m.includes('win rate:')) {
+      const actions = [];
+      if (leagueLink && detectedLeague) {
+        actions.push({ text: `Go to ${detectedLeague}`, q: null, link: leagueLink });
+      }
+      actions.push({ text: 'More team stats', q: 'Show me more detailed stats' });
+      actions.push({ text: 'Different team', q: 'Show me stats for a different team' });
+      actions.push({ text: 'Upcoming matches', q: 'Show me upcoming matches' });
+      return actions.slice(0, 4);
+    }
+
+    // ---- SPORTS PICK / BET SUGGESTION ----
+    if (m.includes('to win') || m.includes('pick:') || m.includes('my pick') || m.includes('confidence') || m.includes('over 2.5') || m.includes('both teams') || m.includes('ready to go')) {
+      const actions = [
+        { text: 'How do I place this?', q: 'Show me step by step how to place this bet' },
+      ];
+      if (leagueLink && detectedLeague) {
+        actions.push({ text: `Go to ${detectedLeague}`, q: null, link: leagueLink });
+      } else {
+        actions.push({ text: 'Place Bet', q: null, link: BWANA_LINKS.sport });
+      }
+      actions.push({ text: 'Show me another pick', q: 'Show me a different betting pick' });
+      actions.push({ text: 'Play casino', q: 'Show me casino games' });
+      return actions.slice(0, 4);
+    }
+
+    // ---- CASINO CONTENT ----
+    if (m.includes('aviator') || m.includes('blackjack') || m.includes('roulette') || m.includes('cash out') || m.includes('multiplier') || m.includes('rtp')) {
+      userPreference = 'casino';
+      return [
+        { text: 'Where do I find this game?', q: 'Show me where to find this game on BwanaBet' },
+        { text: 'Show me a different game', q: 'Recommend a different casino game' },
+        { text: 'More winning tips', q: 'Give me more tips to win at this game' },
+        { text: 'Try sports betting', q: 'Show me sports betting picks' },
+      ];
+    }
+
+    // ---- EDUCATIONAL / EXPLANATION ----
+    if (m.includes('how it works') || m.includes('meaning') || m.includes('means that') || m.includes('explained') || m.includes('what is')) {
+      return [
+        { text: 'I understand, show me picks', q: 'Now show me some betting picks' },
+        { text: 'Explain more', q: 'Explain this in more detail' },
+        { text: 'Show me examples', q: 'Show me examples of this bet type' },
+        { text: 'Play casino', q: 'Show me casino games' },
+      ];
+    }
+
+    // ---- STRATEGY / TIPS ----
+    if (m.includes('strategy') || m.includes('tip:') || m.includes('pro tip') || m.includes('tips')) {
+      return [
+        { text: 'Let me try this', q: 'Show me where to play this' },
+        { text: 'More strategies', q: 'Give me more winning strategies' },
+        { text: 'Beginner tips', q: 'Give me beginner-friendly tips' },
+        { text: 'Try sports betting', q: 'Show me sports betting picks' },
+      ];
+    }
+
+    // ---- STANDINGS / TABLE ----
+    if (m.includes('standings') || m.includes('table') || m.includes('rank')) {
+      const actions = [];
+      if (leagueLink && detectedLeague) {
+        actions.push({ text: `Bet on ${detectedLeague}`, q: null, link: leagueLink });
+      }
+      actions.push({ text: 'Pick a match to bet on', q: 'Pick a match from this league for me to bet on' });
+      actions.push({ text: 'Another league', q: 'Show me standings for a different league' });
+      actions.push({ text: 'Play casino', q: 'Show me casino games' });
+      return actions.slice(0, 4);
+    }
+
+    // ---- FINDING HELP ----
+    if (m.includes('how to place') || m.includes('step 1') || m.includes('open bwanabet') || m.includes('tap "place bet"')) {
+      return [
+        { text: 'Got it, show me picks', q: 'Now give me some betting picks' },
+        { text: 'Open BwanaBet', q: null, link: BWANA_LINKS.sport },
+        { text: 'Show me something else', q: 'Show me other options' },
+        { text: 'Play casino', q: 'Show me casino games' },
+      ];
+    }
+
+    // ---- USER PREFERENCE DEFAULTS ----
+    if (userPreference === 'casino') {
+      return [
+        { text: 'Show me casino games', q: 'Show me top casino games' },
+        { text: 'Try sports betting', q: 'Show me sports betting picks' },
+        { text: 'Winning strategies', q: 'Teach me casino winning strategies' },
+        { text: 'Best payouts', q: 'Which games have the best payout rates?' },
+      ];
+    }
+
+    if (userPreference === 'sports') {
+      const actions = [
+        { text: 'Show me sports picks', q: "Show me today's best picks" },
+      ];
+      if (leagueLink && detectedLeague) {
+        actions.push({ text: `Go to ${detectedLeague}`, q: null, link: leagueLink });
+      }
+      actions.push({ text: 'Try casino games', q: 'Show me casino games' });
+      actions.push({ text: 'Different league', q: 'Show me picks from a different league' });
+      return actions.slice(0, 4);
+    }
+
+    // ---- FALLBACK ----
+    return DEFAULT_ACTIONS;
+  }
   const CSS = `
     :host { all: initial; font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif; }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -395,51 +580,6 @@
   // ============================================
   // QUICK ACTIONS (context-aware)
   // ============================================
-  const DEFAULT_ACTIONS = [
-    { text: 'EPL Today', q: 'What EPL matches are on today?' },
-    { text: 'Live Scores', q: 'Show me live scores right now' },
-    { text: 'Sports Picks', q: 'Give me some betting picks for today' },
-    { text: 'Casino Tips', q: 'How do casino slots work?' },
-  ];
-
-  function getSmartActions(lastBotMsg) {
-    if (!lastBotMsg) return DEFAULT_ACTIONS;
-    const m = lastBotMsg.toLowerCase();
-
-    if (m.includes('ready to go') || m.includes('place') || m.includes('bet')) {
-      return [
-        { text: 'Place Bet on BwanaBet', q: null, link: BWANA_LINKS.sport },
-        { text: 'Another pick', q: 'Give me a different pick' },
-        { text: 'More details', q: 'Tell me more about this match' },
-        { text: 'Live betting', q: null, link: BWANA_LINKS.live },
-      ];
-    }
-    if (m.includes('premier league') || m.includes('epl') || m.includes('eng.1')) {
-      return [
-        { text: 'EPL Standings', q: 'Show me EPL standings' },
-        { text: 'Bet on Football', q: null, link: BWANA_LINKS.football },
-        { text: 'Champions League', q: 'Any Champions League matches?' },
-        { text: 'Top scorers', q: 'Who are the EPL top scorers?' },
-      ];
-    }
-    if (m.includes('casino') || m.includes('slots') || m.includes('roulette') || m.includes('blackjack')) {
-      return [
-        { text: 'Play Casino', q: null, link: BWANA_LINKS.casino },
-        { text: 'Try Aviator', q: null, link: BWANA_LINKS.aviator },
-        { text: 'Slot strategies', q: 'What are the best slot strategies?' },
-        { text: 'Back to sports', q: 'Show me today\'s matches' },
-      ];
-    }
-    if (m.includes('standings') || m.includes('table')) {
-      return [
-        { text: 'Bet on a match', q: 'Pick a match from this league for me to bet on' },
-        { text: 'Open BwanaBet', q: null, link: BWANA_LINKS.sport },
-        { text: 'Another league', q: 'Show me La Liga standings' },
-      ];
-    }
-    return DEFAULT_ACTIONS;
-  }
-
   // ============================================
   // BUILD DOM
   // ============================================
@@ -684,6 +824,17 @@
     }
 
     const userText = text.trim();
+
+    // Track user preference from what they ask about
+    const lowerText = userText.toLowerCase();
+    if (lowerText.includes('sport') || lowerText.includes('pick') || lowerText.includes('match') || lowerText.includes('epl') || lowerText.includes('league')) {
+      userPreference = 'sports';
+      state.preferences.mode = 'sports';
+    } else if (lowerText.includes('casino') || lowerText.includes('slot') || lowerText.includes('aviator') || lowerText.includes('blackjack') || lowerText.includes('roulette')) {
+      userPreference = 'casino';
+      state.preferences.mode = 'casino';
+    }
+
     addUserMessage(userText);
     state.messages.push({ role: 'user', content: userText });
     input.value = '';
