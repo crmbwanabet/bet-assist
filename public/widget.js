@@ -885,7 +885,13 @@
         const reply = (data.text && data.text.trim()) ? data.text : "I couldn't generate a response. Try asking differently.";
         state.messages.push({ role: 'assistant', content: reply });
         addBotMessage(reply);
-        renderActions(getSmartActions(reply));
+
+        // Use server-provided actions if available, fall back to client-side detection
+        if (data.actions && data.actions.length > 0) {
+          renderActions(data.actions);
+        } else {
+          renderActions(getSmartActions(reply));
+        }
         saveState();
       })
       .catch(err => {
