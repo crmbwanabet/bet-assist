@@ -771,6 +771,60 @@ For casino questions (roulette, slots, blackjack, aviator):
 - Adapt complexity to the user's level (simple vs in-depth based on their choice)
 
 ###############################################################################
+##  SUGGESTED QUICK ACTIONS                                                  ##
+###############################################################################
+
+At the END of EVERY response, include exactly 3-4 suggested next actions in this format:
+
+[ACTIONS]
+Action text 1 | message to send if clicked
+Action text 2 | message to send if clicked
+Action text 3 | message to send if clicked
+[/ACTIONS]
+
+Rules:
+- Actions MUST be relevant to what you just said — not generic
+- If you listed specific games/teams/options, the actions should match those exact items
+- If you asked a question with choices, the actions should BE those choices
+- One action should always drive toward placing a bet or playing a game
+- Keep action text short (2-5 words)
+- The message after | is what gets sent as the user's next message
+
+Examples:
+
+After listing casino games (Aviator, Blackjack, Roulette):
+[ACTIONS]
+Teach me Aviator | Teach me how to play and win at Aviator
+Teach me Blackjack | Teach me how to play and win at Blackjack
+Try Roulette | Teach me how to play and win at Roulette
+Sports betting instead | Show me sports betting picks
+[/ACTIONS]
+
+After giving a match pick (Liverpool vs Arsenal, BTTS):
+[ACTIONS]
+How do I place this? | Show me step by step how to place this bet
+Different pick | Show me a different betting pick
+More about this match | Tell me more about Liverpool vs Arsenal
+Play casino | Show me casino games
+[/ACTIONS]
+
+After asking "Simple or In-Depth?":
+[ACTIONS]
+Keep it simple | Keep it simple for me
+In-depth analysis | Give me in-depth analysis
+[/ACTIONS]
+
+After showing EPL standings:
+[ACTIONS]
+Pick a match to bet | Pick a match from EPL for me to bet on
+Different league | Show me La Liga standings
+Team stats | Show me stats for a specific team
+Play casino | Show me casino games
+[/ACTIONS]
+
+CRITICAL: Actions must match YOUR response content. If you asked about Aviator specifically, don't suggest "Teach me Blackjack" as the first action.
+
+###############################################################################
 ##  FINAL CHECK BEFORE EVERY RESPONSE                                       ##
 ###############################################################################
 
@@ -781,7 +835,8 @@ For casino questions (roulette, slots, blackjack, aviator):
 [ ] Includes "Ready to go?" or a clear call to action
 [ ] Includes BwanaBet placement instructions if suggesting a bet
 [ ] Includes responsible gambling reminder if suggesting a bet
-[ ] No fabricated data, no guessing, no approximation`;
+[ ] No fabricated data, no guessing, no approximation
+[ ] [ACTIONS] block at the end with 3-4 relevant quick actions`;
 
 
 
@@ -968,8 +1023,27 @@ export default async function handler(req, res) {
 
     console.log(`[widget] Done in ${durationMs}ms, ${loopCount} loops, ${allToolsCalled.length} tools, $${costUsd.toFixed(4)}`);
 
+    // Parse [ACTIONS] block from Claude's response
+    let actions = null;
+    let cleanText = finalText;
+    const actionsMatch = finalText.match(/\[ACTIONS\]([\s\S]*?)\[\/ACTIONS\]/);
+    if (actionsMatch) {
+      cleanText = finalText.replace(/\[ACTIONS\][\s\S]*?\[\/ACTIONS\]/, '').trim();
+      actions = actionsMatch[1]
+        .trim()
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line && line.includes('|'))
+        .map(line => {
+          const [text, query] = line.split('|').map(s => s.trim());
+          return { text, q: query };
+        })
+        .slice(0, 4);
+    }
+
     return res.status(200).json({
-      text: finalText,
+      text: cleanText,
+      actions: actions,
       usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens, tools: allToolsCalled.length },
     });
 
