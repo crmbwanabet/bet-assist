@@ -19,7 +19,7 @@
   // ============================================
   // CONFIG
   // ============================================
-  const SCRIPT = document.currentScript || document.querySelector('script[src*="widget.js"]');
+  const SCRIPT = document.getElementById('betexpert-widget') || document.currentScript || document.querySelector('script[src*="bet-assist"]');
   const API_URL = (SCRIPT?.src ? new URL(SCRIPT.src).origin : '') + '/api/widget-chat';
   const OFFSET_BOTTOM = parseInt(SCRIPT?.getAttribute('data-offset-bottom') || '80', 10);
   const OFFSET_RIGHT = parseInt(SCRIPT?.getAttribute('data-offset-right') || '20', 10);
@@ -42,7 +42,6 @@
       sessionId: 'bew_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7),
       user: null,          // { name }
       messages: [],        // conversation history for API
-      chatHtml: '',        // rendered chat HTML to restore
       preferences: {},
     };
   }
@@ -72,8 +71,7 @@
   // CSS
   // ============================================
   const CSS = `
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-    :host { all: initial; font-family: 'DM Sans', sans-serif; }
+    :host { all: initial; font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif; }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     .be-widget {
@@ -284,6 +282,10 @@
       0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
       30% { transform: translateY(-5px); opacity: 1; }
     }
+    .be-typing-text {
+      font-size: 11px; color: #4b5e7a; margin-left: 6px;
+      white-space: nowrap;
+    }
 
     /* Quick actions row */
     .be-actions {
@@ -361,7 +363,17 @@
     .be-footer-link:hover { color: #f5c518; }
 
     /* ---- MOBILE ---- */
+    .be-h-close-mobile {
+      display: none;
+      background: none; border: none; cursor: pointer;
+      width: 28px; height: 28px; padding: 4px;
+      color: #64748b; flex-shrink: 0;
+    }
+    .be-h-close-mobile svg { width: 18px; height: 18px; fill: #64748b; }
+    .be-h-close-mobile:hover svg { fill: #e2e8f0; }
+
     @media (max-width: 480px) {
+      .be-h-close-mobile { display: flex; align-items: center; justify-content: center; }
       .be-panel {
         width: 100vw; height: 100dvh;
         bottom: 0; right: 0;
@@ -454,6 +466,7 @@
           <button class="be-h-logout" id="beLogout" title="Log out">✕</button>
         </div>
         <div class="be-h-dot" id="beHeaderDot"></div>
+        <button class="be-h-close-mobile" id="beMobileClose" aria-label="Close">${ICO.close}</button>
       </div>
 
       <!-- LOGIN VIEW -->
@@ -510,6 +523,7 @@
   const headerSub = $('beHeaderSub');
   const supportLink = $('beSupportLink');
   const clearBtn = $('beClearChat');
+  const mobileClose = $('beMobileClose');
 
   // ============================================
   // INIT — restore previous session
@@ -519,11 +533,52 @@
     showUserInfo();
   }
 
+  // Mobile close button (#14)
+  mobileClose.addEventListener('click', () => {
+    isOpen = false;
+    panel.classList.remove('be-visible');
+    toggleBtn.classList.remove('be-open');
+    toggleBtn.innerHTML = ICO.ball + '<div class="be-badge" id="beBadge"></div>';
+  });
+
+  // ============================================
+  // LAZY FONT LOADING (#10)
+  // ============================================
+  let fontLoaded = false;
+  function loadFont() {
+    if (fontLoaded) return;
+    fontLoaded = true;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap';
+    document.head.appendChild(link);
+  }
+
+  // ============================================
+  // OFFLINE DETECTION (#11)
+  // ============================================
+  let isOffline = !navigator.onLine;
+  window.addEventListener('online', () => { isOffline = false; updateOnlineStatus(); });
+  window.addEventListener('offline', () => { isOffline = true; updateOnlineStatus(); });
+  function updateOnlineStatus() {
+    if (!headerDot) return;
+    headerDot.style.background = isOffline ? '#ef4444' : '#22c55e';
+    headerDot.style.boxShadow = isOffline ? '0 0 8px rgba(239,68,68,0.5)' : '0 0 8px rgba(34,197,94,0.5)';
+    headerSub.textContent = isOffline ? 'Offline' : 'Sports Assistant';
+  }
+
+  // ============================================
+  // RATE LIMIT — client-side cooldown (#2)
+  // ============================================
+  let lastSendTime = 0;
+  const SEND_COOLDOWN = 3000; // 3 seconds
+
   // ============================================
   // TOGGLE
   // ============================================
   toggleBtn.addEventListener('click', () => {
     isOpen = !isOpen;
+    loadFont(); // #10: lazy load font on first interaction
     panel.classList.toggle('be-visible', isOpen);
     toggleBtn.classList.toggle('be-open', isOpen);
     toggleBtn.innerHTML = isOpen
@@ -581,7 +636,7 @@
   logoutBtn.addEventListener('click', () => {
     state = {
       sessionId: 'bew_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7),
-      user: null, messages: [], chatHtml: '', preferences: {},
+      user: null, messages: [], preferences: {},
     };
     saveState();
     messagesEl.innerHTML = '';
@@ -616,15 +671,44 @@
   // ============================================
   function send(text) {
     if (!text.trim() || isProcessing) return;
-    const userText = text.trim();
 
+    // #2 client: cooldown check
+    const now = Date.now();
+    if (now - lastSendTime < SEND_COOLDOWN) return;
+    lastSendTime = now;
+
+    // #11: offline check
+    if (isOffline) {
+      addBotMessage("You're offline. Check your internet connection and try again.");
+      return;
+    }
+
+    const userText = text.trim();
     addUserMessage(userText);
     state.messages.push({ role: 'user', content: userText });
     input.value = '';
     actionsEl.innerHTML = '';
     isProcessing = true;
     sendBtn.disabled = true;
+    input.disabled = true;           // #8: disable input
+    input.placeholder = 'Waiting for response...';
     showTyping();
+
+    // #12: typing progress messages
+    let typingTimer = null;
+    let typingStage = 0;
+    const typingMessages = ['Fetching live data...', 'Almost there...', 'Taking longer than usual...'];
+    typingTimer = setInterval(() => {
+      if (typingStage < typingMessages.length) {
+        const typingEl = shadow.getElementById('beTypingText');
+        if (typingEl) typingEl.textContent = typingMessages[typingStage];
+        typingStage++;
+      }
+    }, 5000);
+
+    // #1: AbortController with 30s timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
     fetch(API_URL, {
       method: 'POST',
@@ -633,14 +717,21 @@
         messages: state.messages.slice(-20),
         session_id: state.sessionId,
       }),
+      signal: controller.signal,
     })
       .then(r => {
+        if (r.status === 429) throw new Error('RATE_LIMITED');
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then(data => {
         hideTyping();
-        const reply = data.text || 'Something went wrong. Try again.';
+        if (data.error) {
+          addBotMessage("Something went wrong on our end. Try again in a moment.");
+          renderActions(DEFAULT_ACTIONS);
+          return;
+        }
+        const reply = (data.text && data.text.trim()) ? data.text : "I couldn't generate a response. Try asking differently.";
         state.messages.push({ role: 'assistant', content: reply });
         addBotMessage(reply);
         renderActions(getSmartActions(reply));
@@ -649,12 +740,23 @@
       .catch(err => {
         hideTyping();
         console.error('[BetExpert]', err);
-        addBotMessage("Couldn't connect right now. Check your internet and try again.");
+        if (err.name === 'AbortError') {
+          addBotMessage("That took too long. Try a simpler question or try again.");
+        } else if (err.message === 'RATE_LIMITED') {
+          addBotMessage("You're sending messages too fast. Take a breath and try again in a minute.");
+        } else {
+          addBotMessage("Couldn't connect right now. Check your internet and try again.");
+        }
         renderActions(DEFAULT_ACTIONS);
       })
       .finally(() => {
+        clearTimeout(timeout);
+        clearInterval(typingTimer);
         isProcessing = false;
         sendBtn.disabled = false;
+        input.disabled = false;       // #8: re-enable input
+        input.placeholder = 'Ask about matches, odds, picks...';
+        input.focus();
       });
   }
 
@@ -673,7 +775,6 @@
   // Clear chat
   clearBtn.addEventListener('click', () => {
     state.messages = [];
-    state.chatHtml = '';
     saveState();
     messagesEl.innerHTML = '';
     const greeting = state.user
@@ -700,14 +801,12 @@
     el.innerHTML = renderMd(text);
     messagesEl.appendChild(el);
     scrollDown();
-    // Save rendered HTML for restore
-    state.chatHtml = messagesEl.innerHTML;
   }
 
   function showTyping() {
     const el = document.createElement('div');
     el.className = 'be-typing'; el.id = 'beTyping';
-    el.innerHTML = '<div class="be-dot"></div><div class="be-dot"></div><div class="be-dot"></div>';
+    el.innerHTML = '<div class="be-dot"></div><div class="be-dot"></div><div class="be-dot"></div><span class="be-typing-text" id="beTypingText"></span>';
     messagesEl.appendChild(el);
     scrollDown();
   }
@@ -721,10 +820,13 @@
   }
 
   function restoreChat() {
-    if (state.chatHtml) {
-      messagesEl.innerHTML = state.chatHtml;
+    if (state.messages.length > 0) {
+      messagesEl.innerHTML = '';
+      state.messages.forEach(m => {
+        if (m.role === 'user') addUserMessage(m.content);
+        else if (m.role === 'assistant') addBotMessage(m.content);
+      });
       scrollDown();
-      // Restore actions from last bot message
       const lastBot = state.messages.filter(m => m.role === 'assistant').pop();
       renderActions(getSmartActions(lastBot?.content || ''));
     }
