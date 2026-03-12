@@ -10,7 +10,7 @@
       background: #0a0a0a;
       color: #fff;
       font-family: Arial, sans-serif;
-      min-height: 150vh;
+      min-height: 200vh;
     }
     .sim-header {
       background: #111;
@@ -26,22 +26,27 @@
       font-weight: bold;
       color: #f5c518;
       letter-spacing: 1px;
+      text-decoration: none;
     }
+    .sim-nav { display: flex; gap: 4px; flex-wrap: wrap; }
     .sim-nav a {
       color: #888;
       text-decoration: none;
       font-size: 13px;
-      margin: 0 10px;
-      transition: color 0.15s;
+      padding: 6px 12px;
+      border-radius: 4px;
+      transition: all 0.15s;
     }
-    .sim-nav a:hover { color: #f5c518; }
+    .sim-nav a:hover { color: #f5c518; background: rgba(245,197,24,0.08); }
+    .sim-nav a.active { color: #f5c518; background: rgba(245,197,24,0.12); }
     .sim-content {
       padding: 40px 24px;
       max-width: 800px;
       margin: 0 auto;
     }
-    .sim-content h1 { color: #f5c518; margin-bottom: 12px; }
-    .sim-content p { color: #999; line-height: 1.7; margin-bottom: 16px; }
+    .sim-content h1 { color: #f5c518; margin-bottom: 8px; font-size: 24px; }
+    .sim-content h2 { color: #ccc; margin: 32px 0 12px; font-size: 18px; }
+    .sim-content p { color: #999; line-height: 1.7; margin-bottom: 16px; font-size: 14px; }
     .sim-banner {
       background: linear-gradient(135deg, #1a1a2e, #0a0a0a);
       border: 1px solid #222;
@@ -50,30 +55,50 @@
       text-align: center;
       margin: 30px 0;
     }
-    .sim-banner h2 { color: #f5c518; font-size: 28px; }
-    .sim-banner p { color: #888; }
+    .sim-banner h2 { color: #f5c518; font-size: 28px; margin: 0 0 8px; }
+    .sim-banner p { color: #888; margin: 0; }
 
-    .test-checklist {
-      background: #111;
+    /* Category cards (simulating bwanabet.com) */
+    .sim-categories {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 12px; margin: 24px 0;
+    }
+    .sim-cat {
+      background: #1a1a1a;
       border: 1px solid #222;
-      border-radius: 12px;
-      padding: 24px;
-      margin: 24px 0;
-    }
-    .test-checklist h3 { color: #f5c518; margin-bottom: 12px; font-size: 16px; }
-    .test-checklist label {
-      display: block;
-      padding: 8px 0;
-      color: #aaa;
-      font-size: 14px;
+      border-radius: 10px;
+      padding: 24px 12px;
+      text-align: center;
+      color: #888;
+      font-size: 13px;
+      transition: all 0.15s;
       cursor: pointer;
-      border-bottom: 1px solid #1a1a1a;
     }
-    .test-checklist label:last-child { border-bottom: none; }
-    .test-checklist input[type="checkbox"] { margin-right: 10px; accent-color: #f5c518; }
+    .sim-cat:hover { border-color: #f5c518; color: #f5c518; }
+    .sim-cat-icon { font-size: 24px; margin-bottom: 8px; display: block; }
 
+    /* Game grid (simulating casino page) */
+    .sim-games {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px; margin: 16px 0;
+    }
+    .sim-game {
+      background: linear-gradient(135deg, #1a1020, #0a0a14);
+      border: 1px solid #222;
+      border-radius: 10px;
+      padding: 20px 12px;
+      text-align: center;
+      font-size: 11px;
+      color: #888;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .sim-game:hover { border-color: #f5c518; color: #ccc; transform: translateY(-2px); }
+    .sim-game-icon { font-size: 28px; margin-bottom: 6px; display: block; }
+
+    /* Navigation pages */
     .sim-nav-pages {
-      display: flex; gap: 8px; margin: 20px 0;
+      display: flex; gap: 8px; margin: 20px 0; flex-wrap: wrap;
     }
     .sim-nav-pages a {
       padding: 10px 20px;
@@ -86,6 +111,27 @@
       transition: all 0.15s;
     }
     .sim-nav-pages a:hover { background: #f5c518; color: #000; }
+
+    /* Test checklist */
+    .test-section {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 24px;
+      margin: 24px 0;
+    }
+    .test-section h3 { color: #f5c518; margin-bottom: 12px; font-size: 15px; }
+    .test-section label {
+      display: block;
+      padding: 8px 0;
+      color: #aaa;
+      font-size: 13px;
+      cursor: pointer;
+      border-bottom: 1px solid #1a1a1a;
+      line-height: 1.5;
+    }
+    .test-section label:last-child { border-bottom: none; }
+    .test-section input[type="checkbox"] { margin-right: 10px; accent-color: #f5c518; }
 
     /* Fake Tawk.to bubble */
     .fake-tawk {
@@ -106,65 +152,201 @@
       cursor: pointer;
     }
     .fake-tawk:hover { background: #3182ce; }
+
+    @media (max-width: 480px) {
+      .sim-categories { grid-template-columns: repeat(2, 1fr); }
+      .sim-games { grid-template-columns: repeat(2, 1fr); }
+      .sim-header { padding: 10px 16px; }
+      .sim-content { padding: 20px 16px; }
+    }
   </style>
+  <script>
+    // Highlight active nav based on URL param
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const page = params.get('page') || 'home';
+      document.querySelectorAll('.sim-nav a').forEach(a => {
+        if (a.dataset.page === page) a.classList.add('active');
+      });
+      // Show page-specific content
+      document.querySelectorAll('.page-content').forEach(el => {
+        el.style.display = el.dataset.page === page ? 'block' : 'none';
+      });
+    });
+  </script>
 </head>
 <body>
 
+  <!-- HEADER -->
   <div class="sim-header">
-    <div class="sim-logo">BWANABET</div>
+    <a href="widget-test.html" class="sim-logo">BWANABET</a>
     <nav class="sim-nav">
-      <a href="widget-test.html">HOME</a>
-      <a href="widget-test.html?page=sport">SPORT</a>
-      <a href="widget-test.html?page=live">LIVE</a>
-      <a href="widget-test.html?page=casino">CASINO</a>
-      <a href="widget-test.html?page=promo">PROMOTIONS</a>
+      <a href="widget-test.html" data-page="home">HOME</a>
+      <a href="widget-test.html?page=sport" data-page="sport">SPORT</a>
+      <a href="widget-test.html?page=live" data-page="live">LIVE</a>
+      <a href="widget-test.html?page=casino" data-page="casino">CASINO</a>
+      <a href="widget-test.html?page=promo" data-page="promo">PROMOTIONS</a>
     </nav>
   </div>
 
   <div class="sim-content">
-    <h1>BetExpert Widget Test</h1>
-    <p>This page simulates bwanabet.com to test the widget. The blue circle is a fake Tawk.to bubble. The gold BetExpert button sits above it.</p>
 
-    <div class="sim-banner">
-      <h2>K5 FREESPINS EVERY DAY</h2>
-      <p>Only at BwanaBet!</p>
+    <!-- HOME PAGE -->
+    <div class="page-content" data-page="home">
+      <h1>BetExpert Widget Test</h1>
+      <p>This simulates bwanabet.com to test the widget in a realistic environment. Navigate between pages to test dismiss/reappear behavior.</p>
+
+      <div class="sim-banner">
+        <h2>K5 FREESPINS EVERY DAY — EVERY PLAYER!</h2>
+        <p>Only at BwanaBet!</p>
+      </div>
+
+      <div class="sim-categories">
+        <div class="sim-cat"><span class="sim-cat-icon">⚽</span>SPORT</div>
+        <div class="sim-cat"><span class="sim-cat-icon">📡</span>LIVE</div>
+        <div class="sim-cat"><span class="sim-cat-icon">🎰</span>CASINO</div>
+        <div class="sim-cat"><span class="sim-cat-icon">🎲</span>LIVE CASINO</div>
+      </div>
+
+      <h2>Top Casino Slots</h2>
+      <div class="sim-games">
+        <div class="sim-game"><span class="sim-game-icon">✈️</span>Aviator</div>
+        <div class="sim-game"><span class="sim-game-icon">🚀</span>JetX</div>
+        <div class="sim-game"><span class="sim-game-icon">🌟</span>Space Blaze</div>
+        <div class="sim-game"><span class="sim-game-icon">🎪</span>High Flyer</div>
+        <div class="sim-game"><span class="sim-game-icon">🦅</span>Maestro</div>
+        <div class="sim-game"><span class="sim-game-icon">💎</span>777 Gems</div>
+        <div class="sim-game"><span class="sim-game-icon">🔥</span>Burning Coins</div>
+        <div class="sim-game"><span class="sim-game-icon">🎯</span>Pinata Wins</div>
+      </div>
     </div>
 
+    <!-- SPORT PAGE -->
+    <div class="page-content" data-page="sport" style="display:none">
+      <h1>Sport</h1>
+      <p>Simulated sports betting page. The widget should reappear here after being dismissed on another page.</p>
+      <div class="sim-banner">
+        <h2>Premier League — Live Now</h2>
+        <p>Liverpool vs Arsenal, Man City vs Chelsea</p>
+      </div>
+    </div>
+
+    <!-- LIVE PAGE -->
+    <div class="page-content" data-page="live" style="display:none">
+      <h1>Live Betting</h1>
+      <p>Simulated live betting page. Widget should be fully functional here.</p>
+      <div class="sim-banner">
+        <h2>In-Play Events</h2>
+        <p>15 matches live right now</p>
+      </div>
+    </div>
+
+    <!-- CASINO PAGE -->
+    <div class="page-content" data-page="casino" style="display:none">
+      <h1>Casino</h1>
+      <p>Simulated casino page. Try asking the widget "what's hot" — it should reference actual BwanaBet games.</p>
+      <div class="sim-games">
+        <div class="sim-game"><span class="sim-game-icon">✈️</span>Aviator</div>
+        <div class="sim-game"><span class="sim-game-icon">🚀</span>JetX</div>
+        <div class="sim-game"><span class="sim-game-icon">🌟</span>Space Blaze</div>
+        <div class="sim-game"><span class="sim-game-icon">🎪</span>High Flyer</div>
+        <div class="sim-game"><span class="sim-game-icon">🦅</span>Maestro</div>
+        <div class="sim-game"><span class="sim-game-icon">💎</span>777 Gems</div>
+        <div class="sim-game"><span class="sim-game-icon">🔥</span>Burning Coins</div>
+        <div class="sim-game"><span class="sim-game-icon">🎯</span>Pinata Wins</div>
+        <div class="sim-game"><span class="sim-game-icon">🍀</span>Magic Clovers</div>
+        <div class="sim-game"><span class="sim-game-icon">🏺</span>Treasures of Aztec</div>
+        <div class="sim-game"><span class="sim-game-icon">⚡</span>Coin Strike</div>
+        <div class="sim-game"><span class="sim-game-icon">🐔</span>Lucky Chicken</div>
+      </div>
+    </div>
+
+    <!-- PROMOTIONS PAGE -->
+    <div class="page-content" data-page="promo" style="display:none">
+      <h1>Promotions</h1>
+      <p>Simulated promotions page.</p>
+      <div class="sim-banner">
+        <h2>Welcome Bonus — 100% Match up to K500</h2>
+        <p>New players only. T&Cs apply.</p>
+      </div>
+    </div>
+
+    <!-- TEST SECTION (visible on all pages) -->
     <div class="sim-nav-pages">
-      <a href="widget-test.html">Page 1</a>
-      <a href="widget-test.html?page=2">Page 2</a>
-      <a href="widget-test.html?page=3">Page 3</a>
+      <a href="widget-test.html">Home</a>
+      <a href="widget-test.html?page=sport">Sport</a>
+      <a href="widget-test.html?page=live">Live</a>
+      <a href="widget-test.html?page=casino">Casino</a>
+      <a href="widget-test.html?page=promo">Promos</a>
     </div>
-    <p style="color:#666; font-size:12px;">Use these links to test dismiss behavior — click ✕ on the widget, then click a page link. Widget should reappear.</p>
+    <p style="color:#555; font-size:12px;">Use these links to navigate. Widget dismisses on ✕, reappears on next page.</p>
 
-    <div class="test-checklist">
-      <h3>Test Checklist</h3>
-      <label><input type="checkbox"> Gold button appears above the blue Tawk.to bubble</label>
-      <label><input type="checkbox"> Click button — chat panel opens with new intro message</label>
-      <label><input type="checkbox"> Type your name (e.g. "Morrison") — widget recognizes it and greets you</label>
-      <label><input type="checkbox"> Ask "What EPL matches are today?" — returns real live data</label>
-      <label><input type="checkbox"> Ask "Show me casino games" — lists games with relevant quick actions</label>
-      <label><input type="checkbox"> Quick action buttons match the response content</label>
-      <label><input type="checkbox"> BwanaBet deep links open correct pages</label>
-      <label><input type="checkbox"> "Talk to support" link works (opens Tawk.to or bwanabet.com)</label>
-      <label><input type="checkbox"> Refresh page — previous chat restores from localStorage</label>
-      <label><input type="checkbox"> Click ✕ in header — widget disappears completely</label>
-      <label><input type="checkbox"> Click a page link above — widget reappears on new page</label>
-      <label><input type="checkbox"> Resize to mobile (&lt;480px) — bottom sheet at 65% height, not fullscreen</label>
-      <label><input type="checkbox"> Mobile close button visible in header</label>
+    <div class="test-section">
+      <h3>Production Readiness Checklist</h3>
+
+      <label><strong style="color:#f5c518">Opening & Identity</strong></label>
+      <label><input type="checkbox"> Gold ⚽ button appears above the blue Tawk.to bubble</label>
+      <label><input type="checkbox"> Opening message: "I am BetExpert. An AI assistant from Bwana Bet..." with hot game mention</label>
+      <label><input type="checkbox"> Message ends with "Let me know your name or let's get right into it."</label>
+      <label><input type="checkbox"> No "Bwana" used as a name anywhere</label>
+
+      <label><strong style="color:#f5c518">Name Detection</strong></label>
+      <label><input type="checkbox"> Type your name (e.g., "Morrison") — widget saves it and greets by name</label>
+      <label><input type="checkbox"> "My name is Morrison" also works</label>
+      <label><input type="checkbox"> Name shows in the header next to logout ✕</label>
+      <label><input type="checkbox"> Refresh page — name persists from localStorage</label>
+
+      <label><strong style="color:#f5c518">Live Sports Data</strong></label>
+      <label><input type="checkbox"> "What EPL matches are today?" — returns real live data from ESPN</label>
+      <label><input type="checkbox"> "Show me La Liga standings" — real standings table</label>
+      <label><input type="checkbox"> "Compare Liverpool and Arsenal" — real team comparison</label>
+      <label><input type="checkbox"> "Give me a betting pick" — specific pick with BwanaBet placement steps</label>
+
+      <label><strong style="color:#f5c518">Casino & Hot Games</strong></label>
+      <label><input type="checkbox"> "Show me casino games" — mentions actual BwanaBet games with RTPs</label>
+      <label><input type="checkbox"> "What's hot right now?" — references today's hot games from the rotation</label>
+      <label><input type="checkbox"> Hot game mentioned in greeting message</label>
+      <label><input type="checkbox"> Quick action buttons include hot game names ("Try Aviator", etc.)</label>
+
+      <label><strong style="color:#f5c518">Quick Actions & Deep Links</strong></label>
+      <label><input type="checkbox"> Quick action buttons match what Claude actually said (not generic)</label>
+      <label><input type="checkbox"> BwanaBet deep links (gold buttons with ↗) open correct pages</label>
+      <label><input type="checkbox"> After a pick: "How do I place this?" button appears</label>
+      <label><input type="checkbox"> League-specific links (e.g., "Go to Premier League" → correct BwanaBet URL)</label>
+
+      <label><strong style="color:#f5c518">UX & Reliability</strong></label>
+      <label><input type="checkbox"> "Talk to support" opens Tawk.to (or bwanabet.com on test page)</label>
       <label><input type="checkbox"> Typing indicator shows progress ("Fetching live data..." after 5s)</label>
       <label><input type="checkbox"> Send messages rapidly — 3-second cooldown blocks spam</label>
+      <label><input type="checkbox"> Input field disabled while waiting for response</label>
       <label><input type="checkbox"> "Clear chat" resets conversation but keeps name</label>
-      <label><input type="checkbox"> No "Bwana" anywhere in any response</label>
+      <label><input type="checkbox"> Refresh page — previous chat restores from localStorage</label>
+
+      <label><strong style="color:#f5c518">Dismiss & Navigation</strong></label>
+      <label><input type="checkbox"> ✕ button in top-right of header — widget disappears completely</label>
+      <label><input type="checkbox"> Navigate to another page — widget reappears</label>
+      <label><input type="checkbox"> Chat history preserved across pages (localStorage)</label>
+
+      <label><strong style="color:#f5c518">Mobile (resize to &lt;480px)</strong></label>
+      <label><input type="checkbox"> Bottom sheet at 65% height, not fullscreen</label>
+      <label><input type="checkbox"> Top of page still visible behind the widget</label>
+      <label><input type="checkbox"> Rounded top corners on panel</label>
+      <label><input type="checkbox"> Mobile close button visible in header</label>
+      <label><input type="checkbox"> Slide-up animation when opening</label>
+
+      <label><strong style="color:#f5c518">Error Handling</strong></label>
+      <label><input type="checkbox"> Go offline (devtools → Network → Offline) — shows "You're offline" message</label>
+      <label><input type="checkbox"> Header dot turns red when offline, green when back online</label>
+      <label><input type="checkbox"> No developer error messages shown to user</label>
     </div>
 
-    <p style="color: #555; font-size: 12px; margin-top: 40px;">Chat connects to the live API at bet-assist.vercel.app. Make sure all files are deployed.</p>
+    <p style="color: #444; font-size: 11px; margin-top: 40px;">Widget connects to the live API at bet-assist.vercel.app. Ensure all files are deployed and hot-games-schema.sql has been run in Supabase.</p>
   </div>
 
   <!-- Fake Tawk.to bubble -->
-  <div class="fake-tawk" title="This simulates Tawk.to">💬</div>
+  <div class="fake-tawk" title="This simulates Tawk.to's chat bubble">💬</div>
 
-  <!-- BetExpert Widget -->
+  <!-- BetExpert Widget — identical to production embed code -->
   <script id="betexpert-widget" src="widget.js" data-offset-bottom="80" async></script>
 
 </body>
