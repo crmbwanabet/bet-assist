@@ -334,6 +334,29 @@
       display: none;
     }
 
+    /* Dismiss X on the floating button */
+    .be-dismiss-float {
+      position: absolute; top: -6px; right: -6px;
+      width: 20px; height: 20px;
+      background: #1e293b;
+      border: 1.5px solid #475569;
+      border-radius: 50%;
+      color: #94a3b8;
+      font-size: 11px; font-weight: 700;
+      line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      z-index: 2;
+      transition: all 0.15s;
+      font-family: inherit;
+      padding: 0;
+    }
+    .be-dismiss-float:hover {
+      background: #ef4444; border-color: #ef4444;
+      color: #fff;
+      transform: scale(1.15);
+    }
+
     /* ---- PANEL ---- */
     .be-panel {
       position: absolute;
@@ -391,13 +414,17 @@
     .be-h-logout:hover { color: #ef4444; }
 
     .be-h-dismiss {
-      background: none; border: none; cursor: pointer;
-      color: #3d4a63; font-size: 16px; font-weight: 600;
-      padding: 2px 6px; margin-left: 4px;
-      border-radius: 4px; transition: color 0.15s;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      cursor: pointer;
+      color: #94a3b8; font-size: 14px; font-weight: 600;
+      padding: 4px 8px;
+      margin-left: 4px;
+      border-radius: 6px; transition: all 0.15s;
       font-family: inherit; flex-shrink: 0;
+      line-height: 1;
     }
-    .be-h-dismiss:hover { color: #ef4444; }
+    .be-h-dismiss:hover { color: #fff; background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.3); }
 
     /* ---- CHAT VIEW ---- */
     .be-chat { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -623,6 +650,7 @@
     <button class="be-btn" id="beToggle" aria-label="Open BetExpert AI">
       ${ICO.ball}
       <div class="be-badge" id="beBadge"></div>
+      <div class="be-dismiss-float" id="beDismissFloat" title="Remove widget">✕</div>
     </button>
   `;
   shadow.appendChild(root);
@@ -647,6 +675,7 @@
   const clearBtn = $('beClearChat');
   const mobileClose = $('beMobileClose');
   const dismissBtn = $('beDismiss');
+  const dismissFloat = $('beDismissFloat');
 
   // ============================================
   // INIT — restore previous session
@@ -660,13 +689,26 @@
     isOpen = false;
     panel.classList.remove('be-visible');
     toggleBtn.classList.remove('be-open');
-    toggleBtn.innerHTML = ICO.ball + '<div class="be-badge" id="beBadge"></div>';
+    toggleBtn.innerHTML = ICO.ball + '<div class="be-badge" id="beBadge"></div><div class="be-dismiss-float" id="beDismissFloat" title="Remove widget">✕</div>';
+    bindDismissFloat();
   });
 
-  // Dismiss widget entirely (reappears on next page navigation)
+  // Dismiss widget from header X (inside panel)
   dismissBtn.addEventListener('click', () => {
     host.remove();
   });
+
+  // Dismiss widget from floating button X
+  function bindDismissFloat() {
+    const btn = shadow.getElementById('beDismissFloat');
+    if (btn) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Don't trigger toggle
+        host.remove();
+      });
+    }
+  }
+  bindDismissFloat();
 
   // ============================================
   // LAZY FONT LOADING (#10)
@@ -737,7 +779,8 @@
     toggleBtn.classList.toggle('be-open', isOpen);
     toggleBtn.innerHTML = isOpen
       ? ICO.close + '<div class="be-badge" id="beBadge"></div>'
-      : ICO.ball + '<div class="be-badge" id="beBadge"></div>';
+      : ICO.ball + '<div class="be-badge" id="beBadge"></div><div class="be-dismiss-float" id="beDismissFloat" title="Remove widget">✕</div>';
+    if (!isOpen) bindDismissFloat();
 
     if (isOpen) {
       // Fetch hot games in background on first open
