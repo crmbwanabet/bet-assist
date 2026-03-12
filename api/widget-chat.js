@@ -868,6 +868,7 @@ async function checkRateLimit(sessionId) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
   if (!url || !key) return true;
+
   try {
     const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
     const resp = await fetch(
@@ -878,6 +879,50 @@ async function checkRateLimit(sessionId) {
     const rows = await resp.json();
     return rows.length < 15;
   } catch (e) { return true; }
+}
+
+// ============================================
+// HOT GAMES — fetch and inject into system prompt
+// ============================================
+let hotGamesCache = null;
+let hotGamesCacheDate = null;
+
+async function fetchHotGames() {
+  const today = new Date().toISOString().split('T')[0];
+  if (hotGamesCache && hotGamesCacheDate === today) return hotGamesCache;
+
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return null;
+
+  try {
+    const resp = await fetch(
+      `${url}/rest/v1/hot_games?active=eq.true&select=name,category,rtp,description,bwanabet_url&order=weight.desc&limit=25`,
+      { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+    );
+    if (!resp.ok) return null;
+    const games = await resp.json();
+    hotGamesCache = games;
+    hotGamesCacheDate = today;
+    return games;
+  } catch (e) { return null; }
+}
+
+function buildHotGamesPrompt(games) {
+  if (!games || games.length === 0) return '';
+
+  const topGames = games.slice(0, 6);
+  let prompt = `\n\n## TODAY'S HOT CASINO GAMES ON BWANABET\n\nWhen users ask about casino games, what's hot, what's popular, or what to play, reference these games:\n\n`;
+
+  topGames.forEach(g => {
+    prompt += `- **${g.name}** (${g.category}) — ${g.description} RTP: ${g.rtp}%\n`;
+  });
+
+  prompt += `\nAviator is the #1 most-played game on BwanaBet with thousands of active players daily. Always mention it first for crash game requests.\n`;
+  prompt += `When recommending casino games, be enthusiastic about the game mechanics and potential. Use phrases like "players are loving this right now", "one of the most popular on BwanaBet", "high RTP means better chances".\n`;
+  prompt += `Always include the game's RTP when mentioning it. Direct users to BwanaBet Casino to play.\n`;
+
+  return prompt;
 }
 
 export default async function handler(req, res) {
@@ -913,6 +958,10 @@ export default async function handler(req, res) {
   let allToolsCalled = [];
 
   try {
+    // Fetch hot games and inject into system prompt
+    const hotGames = await fetchHotGames();
+    const enhancedPrompt = SYSTEM_PROMPT + buildHotGamesPrompt(hotGames);
+
     let loopCount = 0;
     let finalText = '';
 
@@ -930,7 +979,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model,
           max_tokens: MAX_TOKENS,
-          system: SYSTEM_PROMPT,
+          system: enhancedPrompt,
           messages: conversationMessages,
           tools: TOOL_DEFINITIONS,
         }),
