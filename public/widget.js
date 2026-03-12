@@ -20,10 +20,15 @@
   // CONFIG
   // ============================================
   const SCRIPT = document.getElementById('betexpert-widget') || document.currentScript || document.querySelector('script[src*="bet-assist"]');
-  const API_URL = (SCRIPT?.src ? new URL(SCRIPT.src).origin : '') + '/api/widget-chat';
+  const BASE_URL = SCRIPT?.src ? new URL(SCRIPT.src).origin : '';
+  const API_URL = BASE_URL + '/api/widget-chat';
+  const HOT_GAMES_URL = BASE_URL + '/api/hot-games';
   const OFFSET_BOTTOM = parseInt(SCRIPT?.getAttribute('data-offset-bottom') || '80', 10);
   const OFFSET_RIGHT = parseInt(SCRIPT?.getAttribute('data-offset-right') || '20', 10);
   const STORAGE_KEY = 'betexpert_widget';
+
+  // Hot games (fetched on first open)
+  let hotGames = null;
 
   // ============================================
   // STATE (loaded from localStorage)
@@ -178,8 +183,16 @@
     }
 
     // ---- CASINO CONTENT ----
-    if (m.includes('aviator') || m.includes('blackjack') || m.includes('roulette') || m.includes('cash out') || m.includes('multiplier') || m.includes('rtp')) {
+    if (m.includes('aviator') || m.includes('blackjack') || m.includes('roulette') || m.includes('cash out') || m.includes('multiplier') || m.includes('rtp') || m.includes('casino') || m.includes('slot')) {
       userPreference = 'casino';
+      const hotActions = getHotGameActions();
+      if (hotActions.length > 0) {
+        return [
+          { text: 'Where do I find this game?', q: 'Show me where to find this game on BwanaBet' },
+          ...hotActions.slice(0, 2),
+          { text: 'Try sports betting', q: 'Show me sports betting picks' },
+        ].slice(0, 4);
+      }
       return [
         { text: 'Where do I find this game?', q: 'Show me where to find this game on BwanaBet' },
         { text: 'Show me a different game', q: 'Recommend a different casino game' },
@@ -232,6 +245,14 @@
 
     // ---- USER PREFERENCE DEFAULTS ----
     if (userPreference === 'casino') {
+      const hotActions = getHotGameActions();
+      if (hotActions.length > 0) {
+        return [
+          ...hotActions.slice(0, 2),
+          { text: 'Try sports betting', q: 'Show me sports betting picks' },
+          { text: 'What\'s hot today?', q: 'What casino games are hot on BwanaBet right now?' },
+        ].slice(0, 4);
+      }
       return [
         { text: 'Show me casino games', q: 'Show me top casino games' },
         { text: 'Try sports betting', q: 'Show me sports betting picks' },
@@ -680,11 +701,38 @@
   const SEND_COOLDOWN = 3000; // 3 seconds
 
   // ============================================
+  // HOT GAMES — fetch on first open
+  // ============================================
+  async function loadHotGames() {
+    if (hotGames) return hotGames;
+    try {
+      const r = await fetch(HOT_GAMES_URL);
+      if (!r.ok) return null;
+      const data = await r.json();
+      hotGames = data.games || [];
+      return hotGames;
+    } catch (e) { return null; }
+  }
+
+  function getHotGameGreeting() {
+    if (!hotGames || hotGames.length === 0) return '';
+    const topGame = hotGames[0];
+    return ` **${topGame.name}** is trending on BwanaBet right now — ${topGame.rtp}% RTP.`;
+  }
+
+  function getHotGameActions() {
+    if (!hotGames || hotGames.length === 0) return [];
+    return hotGames.slice(0, 3).map(g => ({
+      text: `Try ${g.name}`, q: `Tell me about ${g.name} and how to win`
+    }));
+  }
+
+  // ============================================
   // TOGGLE
   // ============================================
-  toggleBtn.addEventListener('click', () => {
+  toggleBtn.addEventListener('click', async () => {
     isOpen = !isOpen;
-    loadFont(); // #10: lazy load font on first interaction
+    loadFont();
     panel.classList.toggle('be-visible', isOpen);
     toggleBtn.classList.toggle('be-open', isOpen);
     toggleBtn.innerHTML = isOpen
@@ -692,10 +740,14 @@
       : ICO.ball + '<div class="be-badge" id="beBadge"></div>';
 
     if (isOpen) {
+      // Fetch hot games in background on first open
+      if (!hotGames) loadHotGames();
+
       if (state.messages.length === 0) {
+        const hotLine = getHotGameGreeting();
         const greeting = state.user
-          ? `Hey ${state.user.name}! I am BetExpert. I'm here to give you match statistics, analysis, AND tips. I can also help you pick top paying casino games and tell you which games are hot right now. Just let me know what to do.`
-          : "I am BetExpert. I'm here to give you match statistics, analysis, AND tips. I can also help you to pick top paying casino games and tell you which games are hot right now. Just let me know what to do.\n\nLet me know your name or let's get right into it.";
+          ? `Hey ${state.user.name}! I am BetExpert. I'm here to give you match statistics, analysis, AND tips. I can also help you pick top paying casino games and tell you which games are hot right now.${hotLine} Just let me know what you want to do.`
+          : `I am BetExpert. An AI assistant from Bwana Bet. I'm here to give you match statistics, analysis, AND tips. I can also help you to pick top paying casino games and tell you which games are hot right now.${hotLine} Just let me know what you want to do.\n\nLet me know your name or let's get right into it.`;
         addBotMessage(greeting);
         renderActions(DEFAULT_ACTIONS);
       } else {
@@ -760,7 +812,8 @@
     messagesEl.innerHTML = '';
     userInfo.style.display = 'none';
     headerDot.style.display = '';
-    addBotMessage("I am BetExpert. I'm here to give you match statistics, analysis, AND tips. I can also help you to pick top paying casino games and tell you which games are hot right now. Just let me know what to do.\n\nLet me know your name or let's get right into it.");
+    const hotLine = getHotGameGreeting();
+    addBotMessage(`I am BetExpert. An AI assistant from Bwana Bet. I'm here to give you match statistics, analysis, AND tips. I can also help you to pick top paying casino games and tell you which games are hot right now.${hotLine} Just let me know what you want to do.\n\nLet me know your name or let's get right into it.`);
     renderActions(DEFAULT_ACTIONS);
   });
 
