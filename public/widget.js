@@ -31,7 +31,7 @@
   let state = loadState();
   let isOpen = false;
   let isProcessing = false;
-  let currentView = state.user ? 'chat' : 'login'; // 'login' | 'chat'
+  let currentView = 'chat';
 
   function loadState() {
     try {
@@ -369,49 +369,14 @@
     }
     .be-h-logout:hover { color: #ef4444; }
 
-    /* ---- LOGIN VIEW ---- */
-    .be-login {
-      flex: 1; display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      padding: 32px 28px; gap: 16px; text-align: center;
+    .be-h-dismiss {
+      background: none; border: none; cursor: pointer;
+      color: #3d4a63; font-size: 16px; font-weight: 600;
+      padding: 2px 6px; margin-left: 4px;
+      border-radius: 4px; transition: color 0.15s;
+      font-family: inherit; flex-shrink: 0;
     }
-    .be-login-icon {
-      width: 56px; height: 56px; border-radius: 16px;
-      background: linear-gradient(135deg, #f5c518, #c9a20e);
-      display: flex; align-items: center; justify-content: center;
-      margin-bottom: 4px;
-    }
-    .be-login-icon svg { width: 28px; height: 28px; fill: #0a0a0a; }
-    .be-login h2 { font-size: 18px; font-weight: 700; color: #fff; }
-    .be-login p { font-size: 13px; color: #64748b; max-width: 260px; }
-    .be-login-input {
-      width: 100%;
-      background: #161b2e; border: 1px solid #2a3148;
-      border-radius: 12px; padding: 12px 16px;
-      color: #e2e8f0; font-size: 14px; font-family: inherit;
-      outline: none; text-align: center;
-      transition: border-color 0.2s;
-    }
-    .be-login-input::placeholder { color: #4a5568; }
-    .be-login-input:focus { border-color: #f5c518; }
-    .be-login-btn {
-      width: 100%; padding: 12px;
-      background: linear-gradient(135deg, #f5c518, #c9a20e);
-      border: none; border-radius: 12px;
-      color: #0a0a0a; font-size: 14px; font-weight: 700;
-      cursor: pointer; font-family: inherit;
-      transition: transform 0.15s, box-shadow 0.15s;
-    }
-    .be-login-btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 16px rgba(245,197,24,0.3);
-    }
-    .be-login-skip {
-      background: none; border: none;
-      color: #475569; font-size: 12px; cursor: pointer;
-      font-family: inherit; transition: color 0.15s;
-    }
-    .be-login-skip:hover { color: #94a3b8; }
+    .be-h-dismiss:hover { color: #ef4444; }
 
     /* ---- CHAT VIEW ---- */
     .be-chat { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -559,11 +524,24 @@
 
     @media (max-width: 480px) {
       .be-h-close-mobile { display: flex; align-items: center; justify-content: center; }
-      .be-panel {
-        width: 100vw; height: 100dvh;
-        bottom: 0; right: 0;
-        border-radius: 0;
+      .be-widget { bottom: 0; right: 0; left: 0; }
+      .be-btn {
         position: fixed;
+        bottom: ${OFFSET_BOTTOM}px;
+        right: ${OFFSET_RIGHT}px;
+      }
+      .be-panel {
+        width: 100vw;
+        height: 65dvh;
+        bottom: 0; right: 0; left: 0;
+        border-radius: 20px 20px 0 0;
+        position: fixed;
+        transform: translateY(100%);
+        opacity: 1;
+      }
+      .be-panel.be-visible {
+        transform: translateY(0);
+        opacity: 1;
       }
     }
   `;
@@ -577,9 +555,6 @@
     send: '<svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>',
   };
 
-  // ============================================
-  // QUICK ACTIONS (context-aware)
-  // ============================================
   // ============================================
   // BUILD DOM
   // ============================================
@@ -607,20 +582,11 @@
         </div>
         <div class="be-h-dot" id="beHeaderDot"></div>
         <button class="be-h-close-mobile" id="beMobileClose" aria-label="Close">${ICO.close}</button>
-      </div>
-
-      <!-- LOGIN VIEW -->
-      <div class="be-login" id="beLoginView">
-        <div class="be-login-icon">${ICO.ball}</div>
-        <h2>Welcome to BetExpert</h2>
-        <p>Your AI sports and betting assistant. What should I call you?</p>
-        <input class="be-login-input" id="beNameInput" type="text" placeholder="Enter your name..." maxlength="30" />
-        <button class="be-login-btn" id="beLoginBtn">Start Chatting</button>
-        <button class="be-login-skip" id="beSkipBtn">Skip for now</button>
+        <button class="be-h-dismiss" id="beDismiss" aria-label="Dismiss widget" title="Close BetExpert">✕</button>
       </div>
 
       <!-- CHAT VIEW -->
-      <div class="be-chat" id="beChatView" style="display:none">
+      <div class="be-chat" id="beChatView">
         <div class="be-messages" id="beMessages"></div>
         <div class="be-actions" id="beActions"></div>
         <div class="be-input-row">
@@ -647,15 +613,10 @@
   const $ = (id) => shadow.getElementById(id);
   const panel = $('bePanel');
   const toggleBtn = $('beToggle');
-  const loginView = $('beLoginView');
-  const chatView = $('beChatView');
   const messagesEl = $('beMessages');
   const actionsEl = $('beActions');
   const input = $('beInput');
   const sendBtn = $('beSend');
-  const nameInput = $('beNameInput');
-  const loginBtn = $('beLoginBtn');
-  const skipBtn = $('beSkipBtn');
   const logoutBtn = $('beLogout');
   const userInfo = $('beUserInfo');
   const userName = $('beUserName');
@@ -664,12 +625,12 @@
   const supportLink = $('beSupportLink');
   const clearBtn = $('beClearChat');
   const mobileClose = $('beMobileClose');
+  const dismissBtn = $('beDismiss');
 
   // ============================================
   // INIT — restore previous session
   // ============================================
   if (state.user) {
-    currentView = 'chat';
     showUserInfo();
   }
 
@@ -679,6 +640,11 @@
     panel.classList.remove('be-visible');
     toggleBtn.classList.remove('be-open');
     toggleBtn.innerHTML = ICO.ball + '<div class="be-badge" id="beBadge"></div>';
+  });
+
+  // Dismiss widget entirely (reappears on next page navigation)
+  dismissBtn.addEventListener('click', () => {
+    host.remove();
   });
 
   // ============================================
@@ -726,53 +692,65 @@
       : ICO.ball + '<div class="be-badge" id="beBadge"></div>';
 
     if (isOpen) {
-      if (currentView === 'chat') {
-        showChatView();
-        if (state.messages.length === 0) {
-          const greeting = state.user
-            ? `Hey ${state.user.name}! What match or team do you want to know about?`
-            : "Hey! I'm BetExpert — your sports and betting assistant. Ask me anything.";
-          addBotMessage(greeting);
-          renderActions(DEFAULT_ACTIONS);
-        } else {
-          // Restore previous chat
-          restoreChat();
-        }
-        setTimeout(() => input.focus(), 150);
+      if (state.messages.length === 0) {
+        const greeting = state.user
+          ? `Hey ${state.user.name}! I am BetExpert. I'm here to give you match statistics, analysis, AND tips. I can also help you pick top paying casino games and tell you which games are hot right now. Just let me know what to do.`
+          : "I am BetExpert. I'm here to give you match statistics, analysis, AND tips. I can also help you to pick top paying casino games and tell you which games are hot right now. Just let me know what to do.\n\nLet me know your name or let's get right into it.";
+        addBotMessage(greeting);
+        renderActions(DEFAULT_ACTIONS);
       } else {
-        showLoginView();
-        setTimeout(() => nameInput.focus(), 150);
+        restoreChat();
+      }
+      setTimeout(() => input.focus(), 150);
+    }
+  });
+
+  // ============================================
+  // NAME DETECTION (Task 2)
+  // ============================================
+  // Detects if the user's message is a name (short, not a question/command)
+  function detectName(text) {
+    const trimmed = text.trim();
+    // Skip if already have a name, or if it looks like a command/question
+    if (state.user) return null;
+    if (trimmed.length > 30 || trimmed.length < 2) return null;
+    if (trimmed.includes('?') || trimmed.includes('!')) return null;
+    
+    // Common non-name patterns
+    const nonNames = ['hi', 'hey', 'hello', 'yes', 'no', 'ok', 'okay', 'sure', 'thanks', 'thank you',
+      'sports', 'casino', 'betting', 'show', 'give', 'tell', 'help', 'what', 'how', 'which', 'get',
+      'epl', 'nba', 'nfl', 'football', 'match', 'picks', 'tips', 'live', 'scores', 'standings'];
+    if (nonNames.includes(trimmed.toLowerCase())) return null;
+    if (trimmed.split(' ').length > 3) return null;
+    
+    // Check for "my name is X" / "I'm X" / "call me X" patterns
+    const patterns = [
+      /^(?:my name is|i'm|im|i am|call me|it's|its)\s+(.+)$/i,
+      /^(?:name:?\s*)(.+)$/i,
+    ];
+    for (const p of patterns) {
+      const match = trimmed.match(p);
+      if (match) return match[1].trim();
+    }
+    
+    // If it's 1-2 words, starts with uppercase, and is the first message — likely a name
+    if (state.messages.length <= 1 && trimmed.split(' ').length <= 2) {
+      const firstChar = trimmed.charAt(0);
+      if (firstChar === firstChar.toUpperCase() && firstChar !== firstChar.toLowerCase()) {
+        return trimmed;
       }
     }
-  });
-
-  // ============================================
-  // LOGIN
-  // ============================================
-  function doLogin(name) {
-    state.user = { name: name || 'Bwana' };
-    saveState();
-    currentView = 'chat';
-    showChatView();
-    showUserInfo();
-    addBotMessage(`Hey ${state.user.name}! I'm BetExpert — your AI sports assistant. What match or team do you want to know about?`);
-    renderActions(DEFAULT_ACTIONS);
-    setTimeout(() => input.focus(), 150);
+    
+    return null;
   }
 
-  loginBtn.addEventListener('click', () => {
-    const name = nameInput.value.trim();
-    if (!name) { nameInput.focus(); return; }
-    doLogin(name);
-  });
-  nameInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      const name = nameInput.value.trim();
-      if (name) doLogin(name);
-    }
-  });
-  skipBtn.addEventListener('click', () => doLogin('Bwana'));
+  function setUserName(name) {
+    state.user = { name };
+    saveState();
+    showUserInfo();
+  }
 
+  // Logout clears everything but stays in chat
   logoutBtn.addEventListener('click', () => {
     state = {
       sessionId: 'bew_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7),
@@ -780,24 +758,15 @@
     };
     saveState();
     messagesEl.innerHTML = '';
-    currentView = 'login';
-    showLoginView();
     userInfo.style.display = 'none';
     headerDot.style.display = '';
+    addBotMessage("I am BetExpert. I'm here to give you match statistics, analysis, AND tips. I can also help you to pick top paying casino games and tell you which games are hot right now. Just let me know what to do.\n\nLet me know your name or let's get right into it.");
+    renderActions(DEFAULT_ACTIONS);
   });
 
   // ============================================
-  // VIEW SWITCHING
+  // VIEW HELPERS
   // ============================================
-  function showLoginView() {
-    loginView.style.display = 'flex';
-    chatView.style.display = 'none';
-    nameInput.value = '';
-  }
-  function showChatView() {
-    loginView.style.display = 'none';
-    chatView.style.display = 'flex';
-  }
   function showUserInfo() {
     if (!state.user) return;
     userInfo.style.display = 'flex';
@@ -824,6 +793,19 @@
     }
 
     const userText = text.trim();
+
+    // Task 2: Detect if user is giving their name
+    const detectedName = detectName(userText);
+    if (detectedName) {
+      setUserName(detectedName);
+      addUserMessage(userText);
+      addBotMessage(`Nice to meet you, ${detectedName}! What would you like to know? Sports picks, casino games, or something specific?`);
+      state.messages.push({ role: 'user', content: userText });
+      state.messages.push({ role: 'assistant', content: `Nice to meet you, ${detectedName}! What would you like to know?` });
+      saveState();
+      renderActions(DEFAULT_ACTIONS);
+      return;
+    }
 
     // Track user preference from what they ask about
     const lowerText = userText.toLowerCase();
@@ -935,8 +917,8 @@
     saveState();
     messagesEl.innerHTML = '';
     const greeting = state.user
-      ? `Chat cleared! What do you want to know, ${state.user.name}?`
-      : 'Chat cleared! Ask me anything.';
+      ? `Chat cleared, ${state.user.name}! What do you want to know?`
+      : 'Chat cleared! What do you want to know?';
     addBotMessage(greeting);
     renderActions(DEFAULT_ACTIONS);
   });
