@@ -10,6 +10,7 @@
       background: #0a0a0a;
       color: #fff;
       font-family: Arial, sans-serif;
+      min-height: 150vh;
     }
     .sim-header {
       background: #111;
@@ -18,6 +19,7 @@
       align-items: center;
       gap: 16px;
       border-bottom: 2px solid #f5c518;
+      position: sticky; top: 0; z-index: 100;
     }
     .sim-logo {
       font-size: 20px;
@@ -30,7 +32,9 @@
       text-decoration: none;
       font-size: 13px;
       margin: 0 10px;
+      transition: color 0.15s;
     }
+    .sim-nav a:hover { color: #f5c518; }
     .sim-content {
       padding: 40px 24px;
       max-width: 800px;
@@ -49,7 +53,41 @@
     .sim-banner h2 { color: #f5c518; font-size: 28px; }
     .sim-banner p { color: #888; }
 
-    /* Fake Tawk.to bubble (for testing positioning) */
+    .test-checklist {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 24px;
+      margin: 24px 0;
+    }
+    .test-checklist h3 { color: #f5c518; margin-bottom: 12px; font-size: 16px; }
+    .test-checklist label {
+      display: block;
+      padding: 8px 0;
+      color: #aaa;
+      font-size: 14px;
+      cursor: pointer;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .test-checklist label:last-child { border-bottom: none; }
+    .test-checklist input[type="checkbox"] { margin-right: 10px; accent-color: #f5c518; }
+
+    .sim-nav-pages {
+      display: flex; gap: 8px; margin: 20px 0;
+    }
+    .sim-nav-pages a {
+      padding: 10px 20px;
+      background: #1a1a2e;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #f5c518;
+      text-decoration: none;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+    .sim-nav-pages a:hover { background: #f5c518; color: #000; }
+
+    /* Fake Tawk.to bubble */
     .fake-tawk {
       position: fixed;
       bottom: 20px;
@@ -75,32 +113,58 @@
   <div class="sim-header">
     <div class="sim-logo">BWANABET</div>
     <nav class="sim-nav">
-      <a href="#">HOME</a>
-      <a href="#">SPORT</a>
-      <a href="#">LIVE</a>
-      <a href="#">CASINO</a>
-      <a href="#">PROMOTIONS</a>
+      <a href="widget-test.html">HOME</a>
+      <a href="widget-test.html?page=sport">SPORT</a>
+      <a href="widget-test.html?page=live">LIVE</a>
+      <a href="widget-test.html?page=casino">CASINO</a>
+      <a href="widget-test.html?page=promo">PROMOTIONS</a>
     </nav>
   </div>
 
   <div class="sim-content">
-    <h1>Widget Test Page</h1>
-    <p>This page simulates the bwanabet.com layout to test the BetExpert widget positioning and functionality. The blue circle in the bottom-right represents where Tawk.to's bubble would be. The gold BetExpert button should appear above it.</p>
+    <h1>BetExpert Widget Test</h1>
+    <p>This page simulates bwanabet.com to test the widget. The blue circle is a fake Tawk.to bubble. The gold BetExpert button sits above it.</p>
 
     <div class="sim-banner">
       <h2>K5 FREESPINS EVERY DAY</h2>
       <p>Only at BwanaBet!</p>
     </div>
 
-    <p>Try clicking the gold BetExpert button above the blue Tawk.to bubble. The chat panel should open inline. Try asking about EPL matches, La Liga standings, or casino tips.</p>
-    <p>On mobile (resize to &lt;480px), the chat panel should go full screen.</p>
-    <p style="margin-top: 40px; color: #555; font-size: 12px;">Note: Chat will only work when connected to the live API at bet-assist.vercel.app</p>
+    <div class="sim-nav-pages">
+      <a href="widget-test.html">Page 1</a>
+      <a href="widget-test.html?page=2">Page 2</a>
+      <a href="widget-test.html?page=3">Page 3</a>
+    </div>
+    <p style="color:#666; font-size:12px;">Use these links to test dismiss behavior — click ✕ on the widget, then click a page link. Widget should reappear.</p>
+
+    <div class="test-checklist">
+      <h3>Test Checklist</h3>
+      <label><input type="checkbox"> Gold button appears above the blue Tawk.to bubble</label>
+      <label><input type="checkbox"> Click button — chat panel opens with new intro message</label>
+      <label><input type="checkbox"> Type your name (e.g. "Morrison") — widget recognizes it and greets you</label>
+      <label><input type="checkbox"> Ask "What EPL matches are today?" — returns real live data</label>
+      <label><input type="checkbox"> Ask "Show me casino games" — lists games with relevant quick actions</label>
+      <label><input type="checkbox"> Quick action buttons match the response content</label>
+      <label><input type="checkbox"> BwanaBet deep links open correct pages</label>
+      <label><input type="checkbox"> "Talk to support" link works (opens Tawk.to or bwanabet.com)</label>
+      <label><input type="checkbox"> Refresh page — previous chat restores from localStorage</label>
+      <label><input type="checkbox"> Click ✕ in header — widget disappears completely</label>
+      <label><input type="checkbox"> Click a page link above — widget reappears on new page</label>
+      <label><input type="checkbox"> Resize to mobile (&lt;480px) — bottom sheet at 65% height, not fullscreen</label>
+      <label><input type="checkbox"> Mobile close button visible in header</label>
+      <label><input type="checkbox"> Typing indicator shows progress ("Fetching live data..." after 5s)</label>
+      <label><input type="checkbox"> Send messages rapidly — 3-second cooldown blocks spam</label>
+      <label><input type="checkbox"> "Clear chat" resets conversation but keeps name</label>
+      <label><input type="checkbox"> No "Bwana" anywhere in any response</label>
+    </div>
+
+    <p style="color: #555; font-size: 12px; margin-top: 40px;">Chat connects to the live API at bet-assist.vercel.app. Make sure all files are deployed.</p>
   </div>
 
   <!-- Fake Tawk.to bubble -->
   <div class="fake-tawk" title="This simulates Tawk.to">💬</div>
 
-  <!-- BetExpert Widget (the actual embed code) -->
+  <!-- BetExpert Widget -->
   <script id="betexpert-widget" src="widget.js" data-offset-bottom="80" async></script>
 
 </body>
