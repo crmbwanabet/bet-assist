@@ -864,6 +864,98 @@ function estimateCost(inp, out) {
   return ((inp / 1e6) * 3.0) + ((out / 1e6) * 15.0);
 }
 
+// ============================================
+// SLACK NOTIFICATIONS (inline, no imports)
+// ============================================
+
+async function slackAlert(severity, title, details = {}) {
+  const url = process.env.SLACK_WEBHOOK_URL;
+  if (!url) return;
+
+  const emojis = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵' };
+  const emoji = emojis[severity] || '🔵';
+  const time = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+
+  const fields = [
+    { type: 'mrkdwn', text: `*Error:*\n${title}` },
+    { type: 'mrkdwn', text: `*Severity:*\n${severity.toUpperCase()}` },
+    { type: 'mrkdwn', text: `*Time:*\n${time}` },
+  ];
+  if (details.endpoint) fields.push({ type: 'mrkdwn', text: `*Endpoint:*\n${details.endpoint}` });
+  if (details.duration) fields.push({ type: 'mrkdwn', text: `*Duration:*\n${details.duration}` });
+  if (details.cost) fields.push({ type: 'mrkdwn', text: `*Cost:*\n${details.cost}` });
+
+  const blocks = [
+    { type: 'header', text: { type: 'plain_text', text: `${emoji} BETEXPERT ${severity.toUpperCase()}` } },
+    { type: 'section', fields },
+  ];
+
+  if (details.message) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `\`\`\`${String(details.message).slice(0, 500)}\`\`\`` } });
+  }
+
+  if (details.sessionId) {
+    blocks.push({ type: 'context', elements: [
+      { type: 'mrkdwn', text: `Session: \`${details.sessionId}\` | <https://bet-assist.vercel.app/admin.html|Dashboard>` }
+    ] });
+  }
+
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: `${emoji} ${title}`, blocks }),
+    });
+  } catch (e) { console.error('[slack] Failed:', e.message); }
+}
+
+// Check error rate and cost thresholds after each request
+async function checkAlertThresholds(sessionId, costUsd) {
+  const sbUrl = process.env.SUPABASE_URL;
+  const sbKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!sbUrl || !sbKey || !process.env.SLACK_WEBHOOK_URL) return;
+
+  try {
+    // Check error rate in last 15 minutes
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60000).toISOString();
+    const resp = await fetch(
+      `${sbUrl}/rest/v1/monitor_requests?select=status&created_at=gte.${fifteenMinAgo}`,
+      { headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}` } }
+    );
+    if (resp.ok) {
+      const rows = await resp.json();
+      if (rows.length >= 10) { // Only check if enough data
+        const errors = rows.filter(r => r.status === 'error').length;
+        const rate = ((errors / rows.length) * 100).toFixed(1);
+        if (parseFloat(rate) > 10) {
+          await slackAlert('high', 'High error rate spike', {
+            message: `${rate}% error rate (${errors}/${rows.length}) in last 15 minutes`,
+            endpoint: 'widget-chat',
+          });
+        }
+      }
+    }
+
+    // Check daily cost
+    const todayStart = new Date().toISOString().split('T')[0] + 'T00:00:00Z';
+    const costResp = await fetch(
+      `${sbUrl}/rest/v1/monitor_requests?select=cost_usd&created_at=gte.${todayStart}`,
+      { headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}` } }
+    );
+    if (costResp.ok) {
+      const costRows = await costResp.json();
+      const totalToday = costRows.reduce((sum, r) => sum + parseFloat(r.cost_usd || 0), 0);
+      const limit = parseFloat(process.env.DAILY_COST_LIMIT || '50');
+      if (totalToday > limit) {
+        await slackAlert('high', 'Daily cost limit exceeded', {
+          message: `Today's cost: $${totalToday.toFixed(2)} (limit: $${limit})`,
+          cost: `$${totalToday.toFixed(2)} / $${limit}`,
+        });
+      }
+    }
+  } catch (e) { /* threshold checks are best-effort */ }
+}
+
 async function checkRateLimit(sessionId) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
@@ -938,7 +1030,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'Service temporarily unavailable' });
+  if (!apiKey) {
+    slackAlert('critical', 'API key missing', { message: 'ANTHROPIC_API_KEY not set in Vercel env vars', endpoint: 'widget-chat' });
+    return res.status(500).json({ error: 'Service temporarily unavailable' });
+  }
 
   const startTime = Date.now();
   const { messages, session_id } = req.body;
@@ -995,6 +1090,9 @@ export default async function handler(req, res) {
           error_message: `Widget: ${errMsg}`, severity: 'high',
           context: { endpoint: 'widget-chat', loop: loopCount, status: response.status },
         });
+        slackAlert(response.status >= 500 ? 'critical' : 'high', `Anthropic API ${response.status}`, {
+          message: errMsg, sessionId, endpoint: 'widget-chat',
+        });
         return res.status(502).json({ error: 'Service temporarily unavailable' });
       }
 
@@ -1023,6 +1121,9 @@ export default async function handler(req, res) {
           };
         } catch (e) {
           console.error(`[widget] Tool ${toolBlock.name} error:`, e.message);
+          slackAlert('medium', `Tool failed: ${toolBlock.name}`, {
+            message: e.message, sessionId, endpoint: 'widget-chat',
+          });
           return {
             type: 'tool_result',
             tool_use_id: toolBlock.id,
@@ -1068,7 +1169,16 @@ export default async function handler(req, res) {
         severity: durationMs > 20000 ? 'high' : 'medium',
         context: { duration_ms: durationMs, tools: allToolsCalled, loops: loopCount },
       }) : Promise.resolve(),
+      // Slack alert for very slow requests (>20s)
+      durationMs > 20000 ? slackAlert('medium', `Slow request: ${(durationMs/1000).toFixed(1)}s`, {
+        duration: `${(durationMs/1000).toFixed(1)}s`,
+        message: `Tools: ${allToolsCalled.join(', ') || 'none'} | Loops: ${loopCount}`,
+        sessionId, endpoint: 'widget-chat',
+      }) : Promise.resolve(),
     ]).catch(() => {});
+
+    // Check error rate + cost thresholds (fire-and-forget)
+    checkAlertThresholds(sessionId, costUsd).catch(() => {});
 
     console.log(`[widget] Done in ${durationMs}ms, ${loopCount} loops, ${allToolsCalled.length} tools, $${costUsd.toFixed(4)}`);
 
@@ -1103,6 +1213,9 @@ export default async function handler(req, res) {
       session_id: sessionId, source: 'api',
       error_message: `Widget exception: ${error.message}`,
       error_raw: error.stack?.slice(0, 3000), severity: 'critical',
+    });
+    slackAlert('critical', 'Widget exception', {
+      message: error.message, sessionId, endpoint: 'widget-chat',
     });
     return res.status(500).json({ error: 'Service temporarily unavailable' });
   }
