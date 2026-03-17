@@ -310,7 +310,7 @@
       box-shadow: 0 6px 32px rgba(245,197,24,0.5), 0 3px 12px rgba(0,0,0,0.5);
     }
     .be-btn:active { transform: scale(0.95); }
-    .be-btn svg { width: 28px; height: 28px; fill: #0a0a0a; transition: transform 0.2s; }
+    .be-btn svg { width: 38px; height: 38px; fill: #0a0a0a; transition: transform 0.2s; }
     .be-btn.be-open svg { transform: rotate(90deg); }
 
     /* Pulse */
@@ -394,7 +394,7 @@
       display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
     }
-    .be-header-icon svg { width: 18px; height: 18px; fill: #0a0a0a; }
+    .be-header-icon svg { width: 26px; height: 26px; fill: #0a0a0a; }
     .be-h-title { font-size: 14px; font-weight: 700; color: #fff; }
     .be-h-sub { font-size: 11px; color: #4b5e7a; margin-top: 1px; }
     .be-h-dot {
