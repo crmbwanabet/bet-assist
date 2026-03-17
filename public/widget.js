@@ -581,6 +581,8 @@
         transform: translateY(0);
         opacity: 1;
       }
+      .be-h-user { display: none !important; }
+      .be-h-dot { display: none !important; }
     }
   `;
 
