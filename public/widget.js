@@ -776,8 +776,8 @@
       if (state.messages.length === 0) {
         const hotLine = getHotGameGreeting();
         const greeting = state.user
-          ? `Hey ${state.user.name}! I am BetExpert. I'm here to give you match statistics, analysis, AND tips. I can also help you pick top paying casino games and tell you which games are hot right now.${hotLine} Just let me know what you want to do.`
-          : `I am BetExpert. An AI assistant from Bwana Bet. I'm here to give you match statistics, analysis, AND tips. I can also help you to pick top paying casino games and tell you which games are hot right now.${hotLine} Just let me know what you want to do.\n\nLet me know your name or let's get right into it.`;
+          ? `Hey ${state.user.name}! I am BetExpert the BwanaBet AI.\n\nI am here to give you expert AI sports analysis and tips.\n\nYou can use me to help analyse your bets and sports picks.\n\nI can help you to explain different betting options and what they mean.\n\nI can also tell you which slot games are worth playing right now to get payouts.\n\nAsk me any question!`
+          : `Hi!\n\nI am BetExpert the BwanaBet AI.\n\nI am here to give you expert AI sports analysis and tips.\n\nYou can use me to help analyse your bets and sports picks.\n\nI can help you to explain different betting options and what they mean.\n\nI can also tell you which slot games are worth playing right now to get payouts.\n\nAsk me any question!`;
         addBotMessage(greeting);
         renderActions(DEFAULT_ACTIONS);
       } else {
@@ -843,7 +843,7 @@
     userInfo.style.display = 'none';
     headerDot.style.display = '';
     const hotLine = getHotGameGreeting();
-    addBotMessage(`I am BetExpert. An AI assistant from Bwana Bet. I'm here to give you match statistics, analysis, AND tips. I can also help you to pick top paying casino games and tell you which games are hot right now.${hotLine} Just let me know what you want to do.\n\nLet me know your name or let's get right into it.`);
+    addBotMessage(`Hi!\n\nI am BetExpert the BwanaBet AI.\n\nI am here to give you expert AI sports analysis and tips.\n\nYou can use me to help analyse your bets and sports picks.\n\nI can help you to explain different betting options and what they mean.\n\nI can also tell you which slot games are worth playing right now to get payouts.\n\nAsk me any question!`);
     renderActions(DEFAULT_ACTIONS);
   });
 
