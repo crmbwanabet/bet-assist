@@ -421,7 +421,7 @@
       cursor: pointer;
       color: #94a3b8; font-size: 14px; font-weight: 600;
       padding: 4px 8px;
-      margin-left: 4px;
+      margin-left: auto;
       border-radius: 6px; transition: all 0.15s;
       font-family: inherit; flex-shrink: 0;
       line-height: 1;
