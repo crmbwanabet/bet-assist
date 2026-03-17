@@ -561,17 +561,7 @@
     .be-footer-link:hover { color: #f5c518; }
 
     /* ---- MOBILE ---- */
-    .be-h-close-mobile {
-      display: none;
-      background: none; border: none; cursor: pointer;
-      width: 28px; height: 28px; padding: 4px;
-      color: #64748b; flex-shrink: 0;
-    }
-    .be-h-close-mobile svg { width: 18px; height: 18px; fill: #64748b; }
-    .be-h-close-mobile:hover svg { fill: #e2e8f0; }
-
     @media (max-width: 480px) {
-      .be-h-close-mobile { display: flex; align-items: center; justify-content: center; }
       .be-widget { bottom: 0; right: 0; left: 0; }
       .be-btn {
         position: fixed;
@@ -629,7 +619,6 @@
           <button class="be-h-logout" id="beLogout" title="Log out">✕</button>
         </div>
         <div class="be-h-dot" id="beHeaderDot"></div>
-        <button class="be-h-close-mobile" id="beMobileClose" aria-label="Close">${ICO.close}</button>
         <button class="be-h-dismiss" id="beDismiss" aria-label="Dismiss widget" title="Close BetExpert">✕</button>
       </div>
 
@@ -673,7 +662,6 @@
   const headerSub = $('beHeaderSub');
   const supportLink = $('beSupportLink');
   const clearBtn = $('beClearChat');
-  const mobileClose = $('beMobileClose');
   const dismissBtn = $('beDismiss');
   const dismissFloat = $('beDismissFloat');
 
@@ -684,18 +672,13 @@
     showUserInfo();
   }
 
-  // Mobile close button (#14)
-  mobileClose.addEventListener('click', () => {
+  // Close panel from header X — just hides panel, does not remove widget
+  dismissBtn.addEventListener('click', () => {
     isOpen = false;
     panel.classList.remove('be-visible');
     toggleBtn.classList.remove('be-open');
     toggleBtn.innerHTML = ICO.ball + '<div class="be-badge" id="beBadge"></div><div class="be-dismiss-float" id="beDismissFloat" title="Remove widget">✕</div>';
     bindDismissFloat();
-  });
-
-  // Dismiss widget from header X (inside panel)
-  dismissBtn.addEventListener('click', () => {
-    host.remove();
   });
 
   // Dismiss widget from floating button X
