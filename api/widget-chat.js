@@ -166,22 +166,34 @@ async function fetchRetry(url, maxRetries = 2) {
 // ESPN FUNCTIONS
 // ============================================
 
-async function fetchGames(leagueInput) {
+function buildDateRange(daysAhead = 7) {
+  const today = new Date();
+  const end = new Date(today);
+  end.setDate(end.getDate() + daysAhead);
+  const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+  return `${fmt(today)}-${fmt(end)}`;
+}
+
+async function fetchGames(leagueInput, daysAhead = 7) {
+  const days = Math.min(Math.max(parseInt(daysAhead) || 7, 1), 30);
   const resolved = resolveLeague(leagueInput);
   if (!resolved) {
     // Try as direct sport
     if (ALL_SPORTS[leagueInput]) {
       const league = Object.keys(ALL_SPORTS[leagueInput].leagues)[0];
-      return fetchGamesForLeague(leagueInput, league);
+      return fetchGamesForLeague(leagueInput, league, days);
     }
     return { error: `Unknown league: ${leagueInput}. Try "Premier League", "NBA", "La Liga", etc.` };
   }
-  return fetchGamesForLeague(resolved.sport, resolved.league);
+  return fetchGamesForLeague(resolved.sport, resolved.league, days);
 }
 
-async function fetchGamesForLeague(sport, league) {
-  const url = buildUrl(sport, league, 'scoreboard');
-  if (!url) return { error: `Could not build URL for ${sport}/${league}` };
+async function fetchGamesForLeague(sport, league, daysAhead = 7) {
+  const baseUrl = buildUrl(sport, league, 'scoreboard');
+  if (!baseUrl) return { error: `Could not build URL for ${sport}/${league}` };
+
+  const dateParam = buildDateRange(daysAhead);
+  const url = `${baseUrl}?dates=${dateParam}`;
 
   try {
     const response = await fetchRetry(url);
@@ -195,6 +207,7 @@ async function fetchGamesForLeague(sport, league) {
       return {
         id: event.id,
         name: event.name,
+        date: event.date,
         status: {
           state: event.status?.type?.state,
           detail: event.status?.type?.detail,
@@ -209,11 +222,13 @@ async function fetchGamesForLeague(sport, league) {
 
     return {
       leagueName: ALL_SPORTS[sport]?.leagues[league] || league,
+      dateRange: dateParam,
+      daysAhead,
       totalGames: games.length,
       liveGames: games.filter(g => g.status.state === 'in'),
       upcomingGames: games.filter(g => g.status.state === 'pre'),
       completedGames: games.filter(g => g.status.state === 'post'),
-      allGames: games.slice(0, 15),
+      allGames: games.slice(0, 30),
       fetchedAt: new Date().toISOString(),
     };
   } catch (error) {
@@ -444,8 +459,8 @@ function calculatePayout(odds, stake) {
 const TOOL_DEFINITIONS = [
   {
     name: 'get_games',
-    description: 'Fetch live, upcoming, and completed games for a league. Returns scores, teams, match times, and game IDs (use IDs with get_game_stats for detailed stats).',
-    input_schema: { type: 'object', properties: { league: { type: 'string', description: 'League name (e.g., "Premier League", "NBA", "La Liga", "Champions League", "UFC")' } }, required: ['league'] },
+    description: 'Fetch live, upcoming, and completed games for a league over a date range. Default is 7 days ahead. Use days_ahead=30 for a full month of fixtures. Returns scores, teams, match times, and game IDs (use IDs with get_game_stats for detailed stats).',
+    input_schema: { type: 'object', properties: { league: { type: 'string', description: 'League name (e.g., "Premier League", "NBA", "La Liga", "Champions League", "UFC")' }, days_ahead: { type: 'number', description: 'Number of days ahead to fetch (1-30, default 7). Use 30 for a full month of fixtures.' } }, required: ['league'] },
   },
   {
     name: 'get_standings',
@@ -489,7 +504,7 @@ const TOOL_DEFINITIONS = [
 // ============================================
 async function executeTool(name, input) {
   switch (name) {
-    case 'get_games': return await fetchGames(input.league);
+    case 'get_games': return await fetchGames(input.league, input.days_ahead);
     case 'get_standings': return await fetchLeagueStandings(input.league);
     case 'get_game_stats': return await fetchGameStats(input.league, input.game_id);
     case 'search_team': return await searchTeam(input.team_name);
@@ -506,10 +521,10 @@ function truncateResult(result) {
   const str = JSON.stringify(result);
   if (str.length > 8000) {
     // Trim arrays
-    if (result.allGames?.length > 8) result.allGames = result.allGames.slice(0, 8);
+    if (result.allGames?.length > 20) result.allGames = result.allGames.slice(0, 20);
     if (result.liveGames?.length > 5) result.liveGames = result.liveGames.slice(0, 5);
-    if (result.upcomingGames?.length > 8) result.upcomingGames = result.upcomingGames.slice(0, 8);
-    if (result.completedGames?.length > 3) result.completedGames = result.completedGames.slice(0, 3);
+    if (result.upcomingGames?.length > 15) result.upcomingGames = result.upcomingGames.slice(0, 15);
+    if (result.completedGames?.length > 5) result.completedGames = result.completedGames.slice(0, 5);
     if (result.standings?.length > 20) result.standings = result.standings.slice(0, 20);
     if (result.results?.length > 8) result.results = result.results.slice(0, 8);
   }
