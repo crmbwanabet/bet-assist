@@ -272,6 +272,18 @@ function getLeagueTimezoneOffset(league) {
   return offsets[league] ?? 0;
 }
 
+function toZambiaTime(isoString) {
+  if (!isoString) return null;
+  const date = new Date(isoString);
+  // CAT = UTC+2. Shift the time then format.
+  const cat = new Date(date.getTime() + 2 * 60 * 60 * 1000);
+  const hours = String(cat.getUTCHours()).padStart(2, '0');
+  const mins = String(cat.getUTCMinutes()).padStart(2, '0');
+  // Return local date string alongside time so Claude labels days correctly
+  const dateStr = cat.toISOString().slice(0, 10); // YYYY-MM-DD in CAT
+  return `${hours}:${mins} CAT (${dateStr})`;
+}
+
 function resolveLeague(input) {
   const lower = input.toLowerCase().trim();
   if (LEAGUE_ALIASES[lower]) return LEAGUE_ALIASES[lower];
@@ -364,27 +376,34 @@ async function fetchGamesForLeague(sport, league, daysAhead = 7) {
 
     const games = (data.events || []).map(event => {
       const comp = event.competitions?.[0];
-      // Try to read homeAway from the field ESPN provides
-      const homeByField = comp?.competitors?.find(c => c.homeAway === 'home');
-      const awayByField = comp?.competitors?.find(c => c.homeAway === 'away');
-
-      // ESPN does not always return homeAway for South American leagues.
-      // When the field is missing, fall back to array position — but note that
-      // South American leagues return away at [0] and home at [1], which is the
-      // reverse of European leagues (home at [0]).
+      // ESPN returns inverted homeAway labels for South American leagues —
+      // the home team is labeled "away" and vice versa. For these leagues we
+      // must ignore the field and always use corrected array position instead.
       const southAmericanLeagues = [
         'arg.1', 'col.1', 'uru.1', 'bra.1', 'mex.1',
         'arg.copa', 'conmebol.libertadores',
       ];
       const isSouthAmerican = southAmericanLeagues.includes(league);
-      const fallbackHomeIndex = isSouthAmerican ? 1 : 0;
-      const fallbackAwayIndex = isSouthAmerican ? 0 : 1;
 
-      const home = homeByField ?? comp?.competitors?.[fallbackHomeIndex];
-      const away = awayByField ?? comp?.competitors?.[fallbackAwayIndex];
+      let home, away, homeAwaySource;
 
-      if (homeByField === undefined) {
-        console.warn(`[espn] homeAway field missing for event ${event.id} in ${league} — using position[${fallbackHomeIndex}] as home`);
+      if (isSouthAmerican) {
+        // For South American leagues: ignore homeAway field — ESPN labels are inverted.
+        // Correct order: index [1] = home, index [0] = away.
+        home = comp?.competitors?.[1];
+        away = comp?.competitors?.[0];
+        homeAwaySource = 'position[1]=home (SA override)';
+        console.log(`[espn] ${league} event ${event.id} — using SA position override`);
+      } else {
+        // For all other leagues: trust the homeAway field, fall back to [0]=home.
+        const homeByField = comp?.competitors?.find(c => c.homeAway === 'home');
+        const awayByField = comp?.competitors?.find(c => c.homeAway === 'away');
+        home = homeByField ?? comp?.competitors?.[0];
+        away = awayByField ?? comp?.competitors?.[1];
+        homeAwaySource = homeByField ? 'field' : 'position[0]=home (fallback)';
+        if (!homeByField) {
+          console.warn(`[espn] homeAway field missing for event ${event.id} in ${league} — using position fallback`);
+        }
       }
 
       return {
@@ -398,9 +417,10 @@ async function fetchGamesForLeague(sport, league, daysAhead = 7) {
         },
         homeTeam: home ? { name: home.team?.displayName, abbreviation: home.team?.abbreviation, score: home.score || '0' } : null,
         awayTeam: away ? { name: away.team?.displayName, abbreviation: away.team?.abbreviation, score: away.score || '0' } : null,
-        _homeAwaySource: homeByField ? 'field' : `position[${fallbackHomeIndex}]`,
+        _homeAwaySource: homeAwaySource,
         venue: comp?.venue?.fullName,
-        startTime: event.date,
+        startTime: toZambiaTime(event.date),
+        startTimeUTC: event.date,
       };
     });
 
@@ -1342,6 +1362,21 @@ WRONG: "Cúcuta Deportivo at Deportivo Pereira"
 RIGHT: "Cúcuta Deportivo vs Deportivo Pereira (Pereira's ground)"
 
 The homeTeam field in tool results is always the home side.
+
+## TIME AND DATE DISPLAY
+
+All match times in tool results are in CAT (Central Africa Time = UTC+2, Zambia time).
+The startTime field format is: "HH:MM CAT (YYYY-MM-DD)"
+
+When labeling matches as "today", "tomorrow", or a day name:
+- Extract the date from the startTime field (the part in parentheses)
+- Compare it against today's date in Zambia (CAT)
+- TODAY in Zambia = matches with today's CAT date
+- TOMORROW = matches with tomorrow's CAT date
+- Never use UTC to determine day labels
+
+Always display times in CAT. Never display raw UTC times to users.
+Example: "21:00 CAT" not "19:00 UTC"
 
 ###############################################################################
 ##  SEASON & DATA VERIFICATION                                               ##
