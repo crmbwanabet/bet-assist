@@ -528,19 +528,32 @@ async function fetchGameStats(leagueInput, gameId) {
 async function searchTeam(teamName) {
   const searchLower = teamName.toLowerCase().trim();
   const results = [];
-  // Reduced to 12 priority leagues for server-side speed (#6)
   const priority = [
+    // Major European
     { sport: 'soccer', league: 'eng.1' }, { sport: 'soccer', league: 'esp.1' },
     { sport: 'soccer', league: 'ger.1' }, { sport: 'soccer', league: 'ita.1' },
     { sport: 'soccer', league: 'fra.1' }, { sport: 'soccer', league: 'uefa.champions' },
+    // Americas
+    { sport: 'soccer', league: 'arg.1' }, { sport: 'soccer', league: 'bra.1' },
+    { sport: 'soccer', league: 'col.1' }, { sport: 'soccer', league: 'uru.1' },
+    { sport: 'soccer', league: 'mex.1' }, { sport: 'soccer', league: 'usa.1' },
+    { sport: 'soccer', league: 'chi.1' }, { sport: 'soccer', league: 'per.1' },
+    { sport: 'soccer', league: 'conmebol.libertadores' },
+    // Africa & Asia
+    { sport: 'soccer', league: 'rsa.1' }, { sport: 'soccer', league: 'egy.1' },
+    { sport: 'soccer', league: 'zam.1' }, { sport: 'soccer', league: 'sau.1' },
+    { sport: 'soccer', league: 'jpn.1' }, { sport: 'soccer', league: 'aus.1' },
+    // Secondary European
+    { sport: 'soccer', league: 'por.1' }, { sport: 'soccer', league: 'ned.1' },
+    { sport: 'soccer', league: 'tur.1' }, { sport: 'soccer', league: 'bel.1' },
+    // Other sports
     { sport: 'basketball', league: 'nba' }, { sport: 'football', league: 'nfl' },
-    { sport: 'hockey', league: 'nhl' }, { sport: 'soccer', league: 'por.1' },
-    { sport: 'soccer', league: 'sau.1' }, { sport: 'soccer', league: 'rsa.1' },
+    { sport: 'hockey', league: 'nhl' },
   ];
 
-  // Search in batches of 6, early exit when found
-  for (let i = 0; i < priority.length && results.length < 8; i += 6) {
-    const batch = priority.slice(i, i + 6);
+  // Search in batches of 9, early exit when found
+  for (let i = 0; i < priority.length && results.length < 8; i += 9) {
+    const batch = priority.slice(i, i + 9);
     const batchResults = await Promise.all(batch.map(async ({ sport, league }) => {
       try {
         const url = buildUrl(sport, league, 'teams');
@@ -1102,6 +1115,34 @@ If they choose sports betting, ask:
 "How do you want me to explain things? **Simple:** One clear pick with step-by-step instructions. **In-Depth:** Full stats, multiple options, betting jargon included."
 
 Adapt ALL future responses to their choice.
+
+## BETSLIP FLOW — HOW TO HANDLE "MAKE ME A BETSLIP"
+
+When a user asks for a betslip, picks, or "what should I bet on today":
+
+Step 1: Call get_football_by_tier with tier "tier1" and daysAhead 1 to check major leagues.
+
+Step 2: If tier1 has matches → build picks from those matches.
+        If tier1 has NO matches → tell the user:
+        "There are no major European league matches today."
+        Then call get_football_by_tier with tier "all" and daysAhead 1.
+
+Step 3: Report which leagues DO have matches today, e.g.:
+        "However, I found matches in these leagues today:
+        • Colombian Primera A (4 matches)
+        • Uruguayan Primera División (6 matches)
+        • Liga Profesional Argentina (1 match)
+        Would you like me to build a betslip from these?"
+
+Step 4: WAIT for the user to confirm before calling get_team_form and building picks.
+        Do NOT auto-generate picks for leagues the user hasn't agreed to.
+
+Step 5: Once user confirms, call get_team_form for both teams in each selected match,
+        then build the betslip using the UPDATED PICK FORMAT below.
+
+IMPORTANT: Never say "form data isn't available" without actually trying.
+Always call get_team_form with the exact team name AND league parameter to
+narrow the search. Example: get_team_form("Deportivo Pereira", "Colombian Primera A")
 
 ## GIVING PICKS
 
