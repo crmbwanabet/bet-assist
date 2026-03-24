@@ -282,11 +282,15 @@ async function fetchRetry(url, maxRetries = 2) {
 // ============================================
 
 function buildDateRange(daysAhead = 7) {
-  const today = new Date();
-  const end = new Date(today);
+  // Use yesterday as start to handle timezone gaps between UTC (Vercel server)
+  // and leagues in UTC-3 to UTC-5 (South America). ESPN filters by event date
+  // in local time, so a UTC "today" can miss late games in western timezones.
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const end = new Date();
   end.setDate(end.getDate() + daysAhead);
   const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
-  return `${fmt(today)}-${fmt(end)}`;
+  return `${fmt(yesterday)}-${fmt(end)}`;
 }
 
 async function fetchGames(leagueInput, daysAhead = 7) {
