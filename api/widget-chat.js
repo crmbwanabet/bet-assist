@@ -235,6 +235,43 @@ const FOOTBALL_TIERS = {
 // ============================================
 // UTILITIES
 // ============================================
+function getLeagueTimezoneOffset(league) {
+  // Returns UTC offset in hours for the league's primary timezone
+  const offsets = {
+    // South America
+    'arg.1':              -3,  // Argentina (no DST)
+    'bra.1':              -3,  // Brazil (Brasília time)
+    'col.1':              -5,  // Colombia (no DST)
+    'uru.1':              -3,  // Uruguay
+    'chi.1':              -4,  // Chile
+    'per.1':              -5,  // Peru
+    'mex.1':              -6,  // Mexico City
+    'usa.1':              -5,  // MLS (Eastern, covers most teams)
+    'conmebol.libertadores': -3,
+
+    // Africa
+    'rsa.1':              +2,  // South Africa (SAST = UTC+2)
+    'egy.1':              +2,  // Egypt
+    'zam.1':              +2,  // Zambia
+    'ken.1':              +3,  // Kenya
+    'nga.1':              +1,  // Nigeria
+    'gha.1':               0,  // Ghana
+    'uga.1':              +3,  // Uganda
+
+    // Asia / Oceania
+    'jpn.1':              +9,  // Japan
+    'aus.1':             +10,  // Australia (AEST)
+    'sau.1':              +3,  // Saudi Arabia
+    'chn.1':              +8,  // China
+    'idn.1':              +7,  // Indonesia (WIB)
+    'tha.1':              +7,  // Thailand
+    'ind.1':            +5.5,  // India (IST)
+
+    // Default 0 for all European leagues — close enough to UTC
+  };
+  return offsets[league] ?? 0;
+}
+
 function resolveLeague(input) {
   const lower = input.toLowerCase().trim();
   if (LEAGUE_ALIASES[lower]) return LEAGUE_ALIASES[lower];
@@ -281,16 +318,21 @@ async function fetchRetry(url, maxRetries = 2) {
 // ESPN FUNCTIONS
 // ============================================
 
-function buildDateRange(daysAhead = 7) {
-  // Use yesterday as start to handle timezone gaps between UTC (Vercel server)
-  // and leagues in UTC-3 to UTC-5 (South America). ESPN filters by event date
-  // in local time, so a UTC "today" can miss late games in western timezones.
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const end = new Date();
+function buildDateRange(daysAhead = 7, league = null) {
+  const now = new Date();
+
+  // Shift current time to the league's local timezone before extracting the date.
+  // This prevents UTC rolling ahead of South American / African local dates,
+  // which caused matches to appear under the wrong day.
+  const offsetHours = league ? getLeagueTimezoneOffset(league) : 0;
+  const localNow = new Date(now.getTime() + offsetHours * 60 * 60 * 1000);
+
+  const end = new Date(localNow);
   end.setDate(end.getDate() + daysAhead);
+
+  // Format as YYYYMMDD (ESPN scoreboard date format)
   const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
-  return `${fmt(yesterday)}-${fmt(end)}`;
+  return `${fmt(localNow)}-${fmt(end)}`;
 }
 
 async function fetchGames(leagueInput, daysAhead = 7) {
@@ -311,8 +353,9 @@ async function fetchGamesForLeague(sport, league, daysAhead = 7) {
   const baseUrl = buildUrl(sport, league, 'scoreboard');
   if (!baseUrl) return { error: `Could not build URL for ${sport}/${league}` };
 
-  const dateParam = buildDateRange(daysAhead);
+  const dateParam = buildDateRange(daysAhead, league);
   const url = `${baseUrl}?dates=${dateParam}`;
+  console.log(`[espn] ${sport}/${league} → dates=${dateParam} (offset: UTC${getLeagueTimezoneOffset(league) >= 0 ? '+' : ''}${getLeagueTimezoneOffset(league)}h)`);
 
   try {
     const response = await fetchRetry(url);
@@ -321,8 +364,16 @@ async function fetchGamesForLeague(sport, league, daysAhead = 7) {
 
     const games = (data.events || []).map(event => {
       const comp = event.competitions?.[0];
-      const home = comp?.competitors?.find(c => c.homeAway === 'home');
-      const away = comp?.competitors?.find(c => c.homeAway === 'away');
+      // Prefer homeAway field; fall back to array position (index 0 = home per ESPN convention)
+      const homeByField = comp?.competitors?.find(c => c.homeAway === 'home');
+      const awayByField = comp?.competitors?.find(c => c.homeAway === 'away');
+      const home = homeByField ?? comp?.competitors?.[0];
+      const away = awayByField ?? comp?.competitors?.[1];
+
+      if (homeByField === undefined) {
+        console.warn(`[espn] homeAway field missing for event ${event.id} in ${league} — using array position`);
+      }
+
       return {
         id: event.id,
         name: event.name,
@@ -334,6 +385,7 @@ async function fetchGamesForLeague(sport, league, daysAhead = 7) {
         },
         homeTeam: home ? { name: home.team?.displayName, abbreviation: home.team?.abbreviation, score: home.score || '0' } : null,
         awayTeam: away ? { name: away.team?.displayName, abbreviation: away.team?.abbreviation, score: away.score || '0' } : null,
+        homeAwaySource: homeByField ? 'field' : 'position',
         venue: comp?.venue?.fullName,
         startTime: event.date,
       };
