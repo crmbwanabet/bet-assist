@@ -1084,7 +1084,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'get_football_by_tier',
-    description: 'Fetch football/soccer matches from a specific tier or ALL leagues at once. Use tier "all" when user asks broadly about football matches (e.g., "what matches are on today?") to scan all 53 leagues in parallel. Tier 1: Major European (EPL, La Liga, Bundesliga, Serie A, Ligue 1, UCL, UEL). Tier 2: Secondary European (Eredivisie, Primeira Liga, Belgian, Scottish, Turkish, Greek, Swiss, Austrian, Danish, Swedish, Norwegian, Czech, Russian, Cypriot, Israeli, Conference League, Championship). Tier 3: Domestic cups & Americas (FA Cup, Copa del Rey, DFB Pokal, MLS, Liga MX, Brasileirão, Colombian, Chilean, Uruguayan, Peruvian, Copa Libertadores). Tier 4: Africa, Asia & Oceania (Saudi Pro League, J1 League, A-League, Chinese, Indonesian, Thai, Indian Super League, PSL South Africa, Egyptian, Zambian Super League, Kenyan, Nigerian, Ghanaian, Ugandan, AFCON).',
+    description: 'Fetch football/soccer matches from a specific tier or ALL leagues at once. Use tier "all" when user asks broadly about football matches (e.g., "what matches are on today?") to scan all 53 leagues in parallel. Tier 1: Major European (EPL, La Liga, Bundesliga, Serie A, Ligue 1, UCL, UEL). Tier 2: Secondary European (Eredivisie, Primeira Liga, Belgian, Scottish, Turkish, Greek, Swiss, Austrian, Danish, Swedish, Norwegian, Czech, Russian, Cypriot, Israeli, Conference League, Championship). Tier 3: Domestic cups & Americas (FA Cup, Copa del Rey, DFB Pokal, MLS, Liga MX, Brasileirão, Colombian, Chilean, Uruguayan, Peruvian, Copa Libertadores). Tier 4: Africa, Asia & Oceania (Saudi Pro League, J1 League, A-League, Chinese, Indonesian, Thai, Indian Super League, PSL South Africa, Egyptian, Zambian Super League, Kenyan, Nigerian, Ghanaian, Ugandan, AFCON). Also use this tool as the first step when building an accumulator — fetch tier3 for South American leagues and tier1 for European leagues to get today\'s candidates.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1698,6 +1698,10 @@ CRITICAL: Actions must match YOUR response content. If you asked about Aviator s
 [ ] BTTS Yes only recommended if both teams scored in 3+ of last 5
 [ ] Confidence is Low if pick depends on a team with 3+ blanks in last 5
 [ ] No double disclosure — only closing disclosure line used
+[ ] Web search form data: extracted individual match results, not just season totals
+[ ] After single pick: accumulator suggestion included in [ACTIONS]
+[ ] When asked for accumulator/best bets: fetched fixtures first, ran form for candidates
+[ ] Accumulator has 2-4 legs, each passing bet type validation rules
 [ ] [ACTIONS] block at the end with 3-4 relevant quick actions
 
 ###############################################################################
@@ -1935,16 +1939,51 @@ Examples:
 Do this for EACH team that returned dataAvailable: false.
 Do not skip this step — always try web search before defaulting to guess.
 
-### STEP 2 — Extract form data from search results
+### STEP 2 — Extract ALL form data from search results
 
-From web search results (Sofascore, Flashscore, SofaScore snippets), extract:
-- Recent W/D/L sequence where visible (e.g. "W D L W W")
-- Goals scored and conceded where visible
-- BTTS count where visible
-- Any form string or rating
+From web search results, extract EVERYTHING available — not just the
+most recent result or a season summary. Look for:
 
-If the search results show clear form data, use it for the pick.
-If the search results show nothing useful, move to Step 3.
+INDIVIDUAL MATCH RESULTS (most valuable):
+- Extract every score visible: "3-2 win vs Tolima", "0-2 loss vs Cali"
+- List them in order from most recent to oldest
+- Count: wins, draws, losses from the extracted results
+- Count: matches where team scored (teamScore > 0)
+- Count: matches where team was blanked (teamScore = 0)
+- Calculate: goals scored total and goals conceded total
+- Calculate: average goals scored per game and conceded per game
+
+SEASON TOTALS (use only if individual results not available):
+- Total goals scored this season
+- Win rate or win count
+- Current league position and points
+
+WHAT NOT TO USE:
+- "14 goals this season" alone is NOT enough for a pick
+- Season totals hide recent form — a team that scored 14 goals
+  over 11 matches may have scored 0 in their last 4
+- Always prefer individual recent results over season aggregates
+
+CORRECT extraction example:
+Web search shows: "3-2 win vs Tolima, 3-2 win vs Pasto, 2-0 win vs
+Millonarios, 0-2 loss vs Cali, 2-2 draw vs Llaneros"
+
+Extract:
+- Last 5: W W W L D (3W-1D-1L)
+- Goals scored: 10 in last 5 (2.0/game)
+- Goals conceded: 8 in last 5 (1.6/game)
+- Scored in: 4/5 matches
+- Blanked in: 1/5 matches
+- BTTS: 4/5 matches
+
+WRONG extraction (too thin):
+- "Cúcuta drew 2-2 with Llaneros recently, scored 14 goals this season"
+  ← This ignores 4 other available results and uses a season total
+
+The basis field in any pick MUST include:
+- Last 3-5 individual results for each team (where available)
+- Goals scored and conceded counts
+- The specific stat that supports the chosen bet type
 
 ### STEP 3 — Build pick from web search data
 
@@ -2204,6 +2243,127 @@ Overall Confidence: [weakest leg's confidence]
 ─────────────────────────────
 
 Ready to go?
+
+## ACCUMULATOR SUGGESTION
+
+After giving any single-match pick, ALWAYS include this as one of the
+[ACTIONS] quick buttons:
+
+[ACTIONS]
+...existing actions...
+Build accumulator | Check today's other matches and build me an accumulator
+[/ACTIONS]
+
+Also add a natural prompt after the pick reasoning:
+"Want me to check today's other matches and build you a full accumulator?"
+
+This applies whenever:
+- User asked for a pick on one specific match
+- The betslip has only 1 pick
+- There are other matches available today
+
+Do not add this suggestion if:
+- User already asked for an accumulator
+- The betslip already has 3+ picks
+- User explicitly said they only want one pick
+
+## ACCUMULATOR BUILDER — MULTI-MATCH ANALYSIS
+
+When a user asks any of these:
+- "Build me an accumulator"
+- "Best bets today"
+- "Give me picks for today"
+- "What should I bet on today"
+- "Build my betslip"
+- "Give me your best picks"
+
+Follow this exact sequence:
+
+### STEP 1 — Fetch today's fixtures
+Call get_football_by_tier with tier="tier3" and days_ahead=1 to get
+today's South American fixtures. Also call get_football_by_tier with
+tier="tier1" and days_ahead=1 for European fixtures if relevant.
+
+### STEP 2 — Identify 3-4 candidate matches
+From the fixtures returned, select 3-4 matches to analyse based on:
+- Matches happening today (not tomorrow or later)
+- Leagues with enough ESPN or web data available
+- Avoid matches where both teams are completely unknown
+
+### STEP 3 — Run get_team_form for all candidates
+Call get_team_form for home AND away team of each candidate match.
+Run these in parallel where possible (call multiple tools in one turn).
+If ESPN returns suspicious data, follow the web search fallback for that team.
+
+### STEP 4 — Score each match by pick quality
+For each match, rate the pick opportunity:
+
+STRONG (include in accumulator):
+- Clear form difference between teams (one team 3W+ vs other 0-1W in last 5)
+- Goals data strongly supports Over 2.5 or BTTS
+- Both teams have 5+ matches of data available
+
+MODERATE (include if needed to reach 3 legs):
+- Some form data available, pick is directionally supported
+- One team has data, other needs web search fallback
+
+WEAK (exclude from accumulator):
+- No data for either team after ESPN + web search
+- Form is too even to call confidently
+- Match is too far ahead (tomorrow or later)
+
+### STEP 5 — Build the accumulator from strongest picks
+Select the 2-4 strongest picks. Aim for:
+- Minimum 2 legs, maximum 4 legs
+- Mix of bet types where possible (not all Away Win)
+- Each leg must pass the bet type validation rules
+
+### STEP 6 — Present the full accumulator slip
+
+Format:
+─────────────────────────────
+MY BETSLIP ([N] picks — Accumulator)
+─────────────────────────────
+1. [Match]
+   Bet: [betType]
+   Confidence: [High/Medium/Low]
+   Based on: [key stats — last 5, goals data]
+   [⚠️ Missing: ... if applicable]
+
+2. [next pick...]
+
+3. [next pick...]
+
+Type: Accumulator
+Overall Confidence: [weakest leg confidence]
+─────────────────────────────
+[Disclosure if web search used]
+[Research links if any gaps]
+─────────────────────────────
+Remember: only bet what you can afford to lose.
+─────────────────────────────
+
+### STEP 7 — Explain the accumulator logic
+
+After the slip, add 2-3 sentences explaining why these legs were chosen
+together — e.g. "These three picks are backed by the clearest form
+differences in today's fixtures. The Away Win legs are both supported
+by 0-win home teams and strong away form."
+
+## WHAT TO DO WHEN DATA IS THIN FOR ALL MATCHES
+
+If get_team_form returns no data for most teams and web search is also
+limited:
+
+"I found [N] matches today but don't have strong form data for most of
+them. Here are my best guesses based on available standings and limited
+form data — please verify before placing:"
+
+Then still provide picks, clearly labelled as Low confidence guesses,
+with research links for each match.
+
+Never say "I can't build an accumulator" — always attempt it and
+be transparent about data quality.
 
 ###############################################################################
 ##  PICK ANALYSIS — GAP DISCLOSURE & BEST GUESS                             ##
