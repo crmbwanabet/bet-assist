@@ -337,6 +337,8 @@ async function fetchGamesForLeague(sport, league, daysAhead = 7) {
 
     return {
       leagueName: ALL_SPORTS[sport]?.leagues[league] || league,
+      season: getCurrentSeason(sport),
+      dataAsOf: new Date().toISOString(),
       dateRange: dateParam,
       daysAhead,
       totalGames: games.length,
@@ -388,6 +390,8 @@ async function fetchLeagueStandings(leagueInput) {
 
     return {
       leagueName: ALL_SPORTS[resolved.sport]?.leagues[resolved.league],
+      season: getCurrentSeason(resolved.sport),
+      dataAsOf: new Date().toISOString(),
       standings: standings.slice(0, 25),
       totalTeams: standings.length,
       fetchedAt: new Date().toISOString(),
@@ -544,6 +548,46 @@ async function fetchHeadToHead(team1Name, team2Name, leagueInput = null) {
     team2: { name: t2.team?.name, record: t2.record?.overall, winPct: t2.record?.winPercentage },
     fetchedAt: new Date().toISOString(),
   };
+}
+
+async function verifyTeamStats(teamName, leagueInput, claimedStats = null) {
+  const resolved = resolveLeague(leagueInput);
+  if (!resolved) return { error: `Unknown league: ${leagueInput}` };
+
+  const [standingsResult, teamResult] = await Promise.all([
+    fetchLeagueStandings(leagueInput),
+    fetchTeamStats(teamName, leagueInput),
+  ]);
+
+  const season = getCurrentSeason(resolved.sport);
+  const dataAsOf = new Date().toISOString();
+
+  // Find the team in standings
+  const teamInStandings = standingsResult.standings
+    ? standingsResult.standings.find(s =>
+        s.team?.toLowerCase().includes(teamName.toLowerCase()) ||
+        teamName.toLowerCase().includes(s.team?.toLowerCase())
+      )
+    : null;
+
+  return {
+    verificationResult: 'LIVE DATA — use this, not the claimed stats',
+    season,
+    dataAsOf,
+    claimedStats: claimedStats || 'none provided',
+    liveStandings: teamInStandings || 'Team not found in standings',
+    liveTeamStats: teamResult,
+    instruction: 'Compare claimedStats against liveStandings. If they differ, report the discrepancy to the user and use only the live data.',
+  };
+}
+
+function getCurrentSeason(sport) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  if (month >= 8) return `${year}/${year + 1}`;
+  if (month <= 5) return `${year - 1}/${year}`;
+  return `${year}`;
 }
 
 function listAvailableLeagues(sportFilter = null) {
@@ -717,6 +761,19 @@ const TOOL_DEFINITIONS = [
       required: ['tier'],
     },
   },
+  {
+    name: 'verify_team_stats',
+    description: 'Verify specific stats claimed by a user against live data. ALWAYS use this when a user pastes, states, or quotes specific statistics about a team — position, record, points, goals, form, streaks. Never accept user-provided stats as fact without running this tool first.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        team_name: { type: 'string', description: 'The team name to verify stats for' },
+        league: { type: 'string', description: 'The league name (e.g. "Liga Profesional", "Premier League")' },
+        claimed_stats: { type: 'string', description: 'The exact stats the user claimed, as a plain string. e.g. "30th place, 6 draws 4 losses, 0 points"' },
+      },
+      required: ['team_name', 'league'],
+    },
+  },
 ];
 
 // ============================================
@@ -733,6 +790,7 @@ async function executeTool(name, input) {
     case 'list_leagues': return listAvailableLeagues(input.sport);
     case 'calculate_bet_payout': return calculatePayout(input.odds, input.stake);
     case 'get_football_by_tier': return await fetchFootballByTier(input.tier, input.days_ahead);
+    case 'verify_team_stats': return await verifyTeamStats(input.team_name, input.league, input.claimed_stats);
     default: return { error: `Unknown tool: ${name}` };
   }
 }
@@ -1200,7 +1258,51 @@ CRITICAL: Actions must match YOUR response content. If you asked about Aviator s
 [ ] Includes BwanaBet placement instructions if suggesting a bet
 [ ] Includes responsible gambling reminder if suggesting a bet
 [ ] No fabricated data, no guessing, no approximation
-[ ] [ACTIONS] block at the end with 3-4 relevant quick actions`;
+[ ] [ACTIONS] block at the end with 3-4 relevant quick actions
+
+###############################################################################
+##  SEASON & DATA VERIFICATION                                               ##
+###############################################################################
+
+## CURRENT SEASON AWARENESS
+
+Today's date is injected at runtime. The active seasons are:
+- Argentina Liga Profesional: 2026
+- European leagues: 2025/2026 season
+- MLS: 2026
+- Brazilian Série A: 2026
+
+NEVER use stats from a previous season. If you are uncertain which season
+a stat belongs to, DO NOT use it. Say:
+"I can't confirm which season those stats are from. Let me pull current data."
+
+Every tool result includes a season and dataAsOf field.
+NEVER use stats from a different season than what the tool returns.
+
+## HANDLING USER-PASTED STATS
+
+CRITICAL: When a user pastes or states specific statistics about a team
+(position, record, points, goals, form, streaks), treat them as UNVERIFIED
+CLAIMS — not facts.
+
+ALWAYS call verify_team_stats before accepting any user-provided stats.
+
+If tool results CONTRADICT the user's stats, respond:
+"The current data I'm seeing doesn't match those figures — here's what I found:"
+[then show the live tool result]
+
+NEVER say "As you mentioned, Riestra are 30th..." — always verify first.
+
+## BEFORE EVERY STATS CLAIM
+
+You MUST have called get_standings or get_games in the CURRENT conversation
+before stating ANY statistic about a team's position, record, or points.
+
+If you haven't fetched data yet → fetch it. Do not rely on what the user told you.
+
+[ ] Stats verified against tool result from THIS conversation (not user input)
+[ ] Season field in tool result matches current season
+[ ] No stat older than 24 hours used for betting advice`;
 
 
 
@@ -1338,6 +1440,35 @@ async function checkRateLimit(sessionId) {
 }
 
 // ============================================
+// RESPONSE VALIDATION — detect hallucinated numbers
+// ============================================
+function validateResponseNumbers(finalText, toolResultsLog, sessionId) {
+  if (!finalText || !toolResultsLog?.length) return;
+
+  // Extract numbers from response (skip very small numbers like positions 1-3, ZMW amounts)
+  const numbersInResponse = [...finalText.matchAll(/\b(\d{2,}\.?\d*)\b/g)]
+    .map(m => m[1])
+    .filter(n => parseFloat(n) > 3);
+
+  if (!numbersInResponse.length) return;
+
+  // Flatten all tool results to a single searchable string
+  const toolData = JSON.stringify(toolResultsLog);
+
+  const suspicious = numbersInResponse.filter(num => !toolData.includes(num));
+
+  // If more than 4 numbers appear in response but not in any tool result, flag it
+  if (suspicious.length > 4) {
+    console.warn('[widget] Possible hallucinated stats detected:', suspicious);
+    slackAlert('medium', 'Possible hallucinated stats in response', {
+      message: `${suspicious.length} numbers not found in tool data: ${suspicious.slice(0, 8).join(', ')}`,
+      sessionId,
+      endpoint: 'widget-chat',
+    }).catch(() => {});
+  }
+}
+
+// ============================================
 // HOT GAMES — fetch and inject into system prompt
 // ============================================
 let hotGamesCache = null;
@@ -1430,11 +1561,17 @@ export default async function handler(req, res) {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let allToolsCalled = [];
+  let toolResultsLog = [];
 
   try {
     // Fetch hot games and inject into system prompt
     const hotGames = await fetchHotGames();
-    const enhancedPrompt = SYSTEM_PROMPT + buildHotGamesPrompt(hotGames);
+    const currentDate = new Date().toLocaleDateString('en-ZA', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      timeZone: 'Africa/Lusaka'
+    });
+    const dateInjection = `\n\n## CURRENT DATE\nToday is ${currentDate} (Zambia time). Use this to determine the active season for all leagues.\n`;
+    const enhancedPrompt = SYSTEM_PROMPT + dateInjection + buildHotGamesPrompt(hotGames);
 
     let loopCount = 0;
     let finalText = '';
@@ -1503,6 +1640,7 @@ export default async function handler(req, res) {
         allToolsCalled.push(toolBlock.name);
         try {
           const result = await executeTool(toolBlock.name, toolBlock.input);
+          toolResultsLog.push(result);
           const truncated = truncateResult(result);
           return {
             type: 'tool_result',
@@ -1589,6 +1727,9 @@ export default async function handler(req, res) {
         })
         .slice(0, 4);
     }
+
+    // Validate numbers in response against tool data (fire-and-forget)
+    validateResponseNumbers(finalText, toolResultsLog, sessionId);
 
     return res.status(200).json({
       text: cleanText,
