@@ -362,7 +362,6 @@ async function fetchGames(leagueInput, daysAhead = 7) {
 }
 
 async function fetchGamesForLeague(sport, league, daysAhead = 7) {
-  console.log(`[path-debug] sport="${sport}" league="${league}" type=${typeof league}`);
   const baseUrl = buildUrl(sport, league, 'scoreboard');
   if (!baseUrl) return { error: `Could not build URL for ${sport}/${league}` };
 
@@ -377,34 +376,13 @@ async function fetchGamesForLeague(sport, league, daysAhead = 7) {
 
     const games = (data.events || []).map(event => {
       const comp = event.competitions?.[0];
-      // ESPN returns inverted homeAway labels for South American leagues —
-      // the home team is labeled "away" and vice versa. For these leagues we
-      // must ignore the field and always use corrected array position instead.
-      const southAmericanLeagues = [
-        'arg.1', 'col.1', 'uru.1', 'bra.1', 'mex.1',
-        'arg.copa', 'conmebol.libertadores',
-      ];
-      const isSouthAmerican = southAmericanLeagues.includes(league);
-
-      let home, away, homeAwaySource;
-
-      if (isSouthAmerican) {
-        // For South American leagues: ignore homeAway field — ESPN labels are inverted.
-        // Correct order: index [1] = home, index [0] = away.
-        home = comp?.competitors?.[1];
-        away = comp?.competitors?.[0];
-        homeAwaySource = 'position[1]=home (SA override)';
-        console.log(`[ha-debug] ${league} event "${event.name}" — competitors[0]="${comp?.competitors?.[0]?.team?.displayName}" competitors[1]="${comp?.competitors?.[1]?.team?.displayName}" — assigned home="${home?.team?.displayName}" away="${away?.team?.displayName}"`);
-      } else {
-        // For all other leagues: trust the homeAway field, fall back to [0]=home.
-        const homeByField = comp?.competitors?.find(c => c.homeAway === 'home');
-        const awayByField = comp?.competitors?.find(c => c.homeAway === 'away');
-        home = homeByField ?? comp?.competitors?.[0];
-        away = awayByField ?? comp?.competitors?.[1];
-        homeAwaySource = homeByField ? 'field' : 'position[0]=home (fallback)';
-        if (!homeByField) {
-          console.warn(`[espn] homeAway field missing for event ${event.id} in ${league} — using position fallback`);
-        }
+      const homeByField = comp?.competitors?.find(c => c.homeAway === 'home');
+      const awayByField = comp?.competitors?.find(c => c.homeAway === 'away');
+      const home = homeByField ?? comp?.competitors?.[0];
+      const away = awayByField ?? comp?.competitors?.[1];
+      const homeAwaySource = homeByField ? 'field' : 'position[0]=fallback';
+      if (!homeByField) {
+        console.warn(`[espn] homeAway field missing for ${league} event ${event.id}`);
       }
 
       return {
