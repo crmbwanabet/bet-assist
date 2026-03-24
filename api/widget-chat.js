@@ -1,5 +1,5 @@
 // ============================================
-// BetExpert Widget — Self-Contained Chat Endpoint
+// BetExpert Widget — Self-Contained Chat Endpoint — v2.1.0
 // All-in-one: sports engine + system prompt + tool loop + monitoring
 // No external imports — everything inline for Vercel compatibility
 // ============================================
