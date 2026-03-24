@@ -790,6 +790,7 @@ You have these tools for REAL-TIME data. ALWAYS use them — never guess:
 - **list_leagues**: Show all available sports and leagues.
 - **calculate_bet_payout**: Calculate returns from odds + stake.
 - **get_football_by_tier**: Fetch football matches across a full tier of leagues at once. Use when user asks broadly about football.
+- **web_search**: Search the live internet for odds, injury news, team news, transfer updates, and any information ESPN tools cannot provide. See the WEB SEARCH section below for detailed usage rules.
 
 Use get_games FIRST when asked about matches, then get_game_stats for details.
 Use get_standings for league tables.
@@ -837,6 +838,61 @@ IMPORTANT:
 - ALWAYS state which leagues were checked and the timeframe when reporting no results
 - If the user asks about a SPECIFIC league (e.g., "Premier League matches"), use get_games directly — do not use the tiered system
 - When presenting results from any tier, always label each match with its league name
+
+###############################################################################
+##  WEB SEARCH — WHEN AND HOW TO USE IT                                     ##
+###############################################################################
+
+You have a **web_search** tool that searches the live internet. Use it strategically alongside ESPN tools.
+
+## WHEN TO USE WEB SEARCH
+
+Use web_search for information ESPN tools CANNOT provide:
+- **Betting odds**: Search for current odds from bookmakers (e.g., "Liverpool vs Arsenal betting odds")
+- **Injury & team news**: Lineup updates, suspensions, injuries before a match
+- **Transfer news**: Recent signings, departures, rumours when relevant to a bet
+- **Leagues not on ESPN**: Any league or competition not in our ESPN coverage
+- **Verification**: When ESPN data looks stale or a user questions the accuracy
+- **Context for picks**: Manager comments, form narratives, derby history
+- **Live scores**: When ESPN returns no live data but user says a match is in progress
+
+## WHEN NOT TO USE WEB SEARCH
+
+Do NOT use web_search when ESPN tools already provide the answer:
+- League standings → use get_standings
+- Upcoming fixtures for known leagues → use get_games or get_football_by_tier
+- Match statistics (possession, shots, corners) → use get_game_stats
+- Team records and win percentages → use get_team_stats
+
+## WEB SEARCH DATA INTEGRITY RULES
+
+The same golden rule applies to web search results:
+- Only cite specific numbers (odds, scores, dates) that appear in the search results
+- If search results are vague or conflicting, say so — do not guess
+- Always attribute: "According to [source]..." when citing odds or news
+- Web search results may be outdated — note the date if visible
+- NEVER combine ESPN numbers with web search numbers to create fake statistics
+
+## SEARCH QUERY TIPS
+
+Write specific, targeted search queries:
+- GOOD: "Manchester United vs Chelsea odds March 2026"
+- GOOD: "Premier League injuries team news matchday 30"
+- BAD: "football" (too vague)
+- BAD: "best bets today" (opinion, not data)
+
+## COMBINING ESPN + WEB SEARCH FOR PICKS
+
+The best betting analysis uses BOTH:
+1. ESPN tools for hard stats (standings, form, head-to-head records)
+2. Web search for context (odds, injuries, team news)
+
+Example flow for a pick:
+1. get_games → find the match and confirm time
+2. get_standings → check league positions
+3. get_team_stats → check recent records
+4. web_search → "Team A vs Team B odds injuries team news"
+5. Combine ALL tool data into an informed pick
 
 ###############################################################################
 ##  HANDLING TOOL RESULTS                                                    ##
@@ -1269,7 +1325,10 @@ export default async function handler(req, res) {
           max_tokens: MAX_TOKENS,
           system: enhancedPrompt,
           messages: conversationMessages,
-          tools: TOOL_DEFINITIONS,
+          tools: [
+            ...TOOL_DEFINITIONS,
+            { type: 'web_search_20250305', name: 'web_search', max_uses: 3 },
+          ],
         }),
       });
 
@@ -1293,16 +1352,24 @@ export default async function handler(req, res) {
       totalOutputTokens += data.usage?.output_tokens || 0;
 
       const textBlocks = (data.content || []).filter(b => b.type === 'text');
-      const toolBlocks = (data.content || []).filter(b => b.type === 'tool_use');
+      // Custom tools need local execution; server tools (web_search) are already resolved inline
+      const customToolBlocks = (data.content || []).filter(b => b.type === 'tool_use');
+      const serverToolBlocks = (data.content || []).filter(b => b.type === 'server_tool_use');
 
-      if (data.stop_reason !== 'tool_use' || toolBlocks.length === 0) {
+      // Track server tool usage (web_search etc.)
+      serverToolBlocks.forEach(b => allToolsCalled.push(b.name));
+
+      if (data.stop_reason !== 'tool_use' || customToolBlocks.length === 0) {
         finalText = textBlocks.map(b => b.text).join('\n');
         break;
       }
 
-      console.log(`[widget] Executing ${toolBlocks.length} tools:`, toolBlocks.map(t => t.name).join(', '));
+      console.log(`[widget] Executing ${customToolBlocks.length} custom tools:`, customToolBlocks.map(t => t.name).join(', '));
+      if (serverToolBlocks.length > 0) {
+        console.log(`[widget] Server tools resolved: ${serverToolBlocks.map(t => t.name).join(', ')}`);
+      }
 
-      const toolResults = await Promise.all(toolBlocks.map(async (toolBlock) => {
+      const toolResults = await Promise.all(customToolBlocks.map(async (toolBlock) => {
         allToolsCalled.push(toolBlock.name);
         try {
           const result = await executeTool(toolBlock.name, toolBlock.input);
