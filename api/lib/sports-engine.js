@@ -112,6 +112,48 @@ const LEAGUE_ALIASES = {
 };
 
 // ============================================
+// FOOTBALL LEAGUE TIERS
+// ============================================
+const FOOTBALL_TIERS = {
+  tier1: [
+    { league: 'eng.1', name: 'Premier League' },
+    { league: 'esp.1', name: 'La Liga' },
+    { league: 'ger.1', name: 'Bundesliga' },
+    { league: 'ita.1', name: 'Serie A' },
+    { league: 'fra.1', name: 'Ligue 1' },
+    { league: 'uefa.champions', name: 'UEFA Champions League' },
+    { league: 'uefa.europa', name: 'UEFA Europa League' },
+  ],
+  tier2: [
+    { league: 'ned.1', name: 'Eredivisie' },
+    { league: 'por.1', name: 'Primeira Liga' },
+    { league: 'bel.1', name: 'Belgian Pro League' },
+    { league: 'sco.1', name: 'Scottish Premiership' },
+    { league: 'tur.1', name: 'Süper Lig' },
+    { league: 'uefa.europa.conf', name: 'Conference League' },
+    { league: 'eng.2', name: 'Championship' },
+    { league: 'eng.fa', name: 'FA Cup' },
+    { league: 'esp.copa_del_rey', name: 'Copa del Rey' },
+    { league: 'ger.dfb_pokal', name: 'DFB Pokal' },
+    { league: 'ita.coppa_italia', name: 'Coppa Italia' },
+    { league: 'fra.coupe_de_france', name: 'Coupe de France' },
+  ],
+  tier3: [
+    { league: 'usa.1', name: 'MLS' },
+    { league: 'mex.1', name: 'Liga MX' },
+    { league: 'bra.1', name: 'Brasileirão' },
+    { league: 'arg.1', name: 'Liga Profesional' },
+    { league: 'sau.1', name: 'Saudi Pro League' },
+    { league: 'jpn.1', name: 'J1 League' },
+    { league: 'aus.1', name: 'A-League' },
+    { league: 'rsa.1', name: 'PSL South Africa' },
+    { league: 'egy.1', name: 'Egyptian Premier League' },
+    { league: 'conmebol.libertadores', name: 'Copa Libertadores' },
+    { league: 'caf.nations', name: 'Africa Cup of Nations' },
+  ],
+};
+
+// ============================================
 // UTILITIES
 // ============================================
 function resolveLeague(input) {
@@ -447,6 +489,45 @@ function calculatePayout(odds, stake) {
   return { odds, stake, profit: profit.toFixed(2), totalReturn: (stake + profit).toFixed(2), impliedProbability: (impliedProb * 100).toFixed(1) + '%' };
 }
 
+async function fetchFootballByTier(tier, daysAhead = 7) {
+  const days = Math.min(Math.max(parseInt(daysAhead) || 7, 1), 30);
+  const tierLeagues = FOOTBALL_TIERS[tier];
+  if (!tierLeagues) return { error: `Unknown tier: ${tier}. Use "tier1", "tier2", or "tier3".` };
+
+  const results = await Promise.all(
+    tierLeagues.map(async ({ league, name }) => {
+      try {
+        const data = await fetchGamesForLeague('soccer', league, days);
+        if (data.error) return { league: name, leagueId: league, error: data.error, totalGames: 0 };
+        return {
+          league: name,
+          leagueId: league,
+          totalGames: data.totalGames || 0,
+          liveGames: data.liveGames || [],
+          upcomingGames: data.upcomingGames || [],
+          completedGames: data.completedGames || [],
+        };
+      } catch (e) {
+        return { league: name, leagueId: league, error: e.message, totalGames: 0 };
+      }
+    })
+  );
+
+  const withGames = results.filter(r => r.totalGames > 0);
+  const totalMatches = withGames.reduce((sum, r) => sum + r.totalGames, 0);
+
+  return {
+    tier,
+    tierName: tier === 'tier1' ? 'Major Leagues' : tier === 'tier2' ? 'Secondary European Leagues & Cups' : 'Americas, Africa, Asia & Oceania',
+    daysAhead: days,
+    totalMatches,
+    leaguesWithGames: withGames.length,
+    leaguesChecked: tierLeagues.length,
+    leagues: withGames,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 // ============================================
 // TOOL DEFINITIONS (for Claude API)
 // ============================================
@@ -491,6 +572,18 @@ const TOOL_DEFINITIONS = [
     description: 'Calculate potential payout for a bet given odds and stake.',
     input_schema: { type: 'object', properties: { odds: { type: 'number' }, stake: { type: 'number' } }, required: ['odds', 'stake'] },
   },
+  {
+    name: 'get_football_by_tier',
+    description: 'Fetch football/soccer matches from a specific tier of leagues. Tier 1: Major leagues (EPL, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, Europa League). Tier 2: Secondary European leagues and cups (Eredivisie, Primeira Liga, Belgian Pro League, Scottish Premiership, Süper Lig, Conference League, Championship, FA Cup, Copa del Rey, DFB Pokal, Coppa Italia, Coupe de France). Tier 3: Americas, Africa, Asia and Oceania (MLS, Liga MX, Brasileirão, Liga Profesional, Saudi Pro League, J1 League, A-League, PSL South Africa, Egyptian Premier League, Copa Libertadores, AFCON). Use this when user asks broadly about football matches. Start with tier1, and if no matches found, ASK the user before checking tier2 or tier3.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tier: { type: 'string', description: 'Which tier to fetch: "tier1", "tier2", or "tier3"' },
+        days_ahead: { type: 'number', description: 'Number of days ahead to fetch (1-30, default 7)' },
+      },
+      required: ['tier'],
+    },
+  },
 ];
 
 // ============================================
@@ -506,6 +599,7 @@ async function executeTool(name, input) {
     case 'get_head_to_head': return await fetchHeadToHead(input.team1, input.team2, input.league);
     case 'list_leagues': return listAvailableLeagues(input.sport);
     case 'calculate_bet_payout': return calculatePayout(input.odds, input.stake);
+    case 'get_football_by_tier': return await fetchFootballByTier(input.tier, input.days_ahead);
     default: return { error: `Unknown tool: ${name}` };
   }
 }
@@ -525,4 +619,4 @@ function truncateResult(result) {
   return result;
 }
 
-export { TOOL_DEFINITIONS, executeTool, truncateResult };
+export { TOOL_DEFINITIONS, executeTool, truncateResult, FOOTBALL_TIERS };
