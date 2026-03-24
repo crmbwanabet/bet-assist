@@ -657,6 +657,118 @@ function getCurrentSeason(sport) {
   return `${year}`;
 }
 
+async function fetchTeamForm(teamName, leagueInput = null, matchCount = 5) {
+  // Step 1: find the team
+  const searchResults = await searchTeam(teamName);
+  if (searchResults.totalFound === 0) {
+    return { error: `Team "${teamName}" not found. Try the full official name.` };
+  }
+
+  let team = searchResults.results[0];
+  if (leagueInput) {
+    const resolved = resolveLeague(leagueInput);
+    if (resolved) {
+      const match = searchResults.results.find(
+        t => t.sport === resolved.sport && t.league === resolved.league
+      );
+      if (match) team = match;
+    }
+  }
+
+  // Step 2: fetch team schedule (contains recent + upcoming matches)
+  const cfg = ALL_SPORTS[team.sport];
+  if (!cfg) return { error: `Unknown sport: ${team.sport}` };
+
+  const scheduleUrl = `${cfg.baseUrl}/${team.league}/teams/${team.id}/schedule`;
+
+  try {
+    const response = await fetchRetry(scheduleUrl);
+    if (!response.ok) throw new Error(`ESPN API error: ${response.status}`);
+    const data = await response.json();
+
+    // Extract completed matches only
+    const events = data.events || [];
+    const completed = events
+      .filter(e => e.competitions?.[0]?.status?.type?.state === 'post')
+      .slice(-matchCount); // last N completed matches
+
+    if (completed.length === 0) {
+      return {
+        error: `No recent completed matches found for ${teamName}. ` +
+               `Cannot make a data-backed pick — insufficient form data.`,
+        dataAvailable: false,
+      };
+    }
+
+    // Parse each completed match
+    const recentMatches = completed.map(event => {
+      const comp = event.competitions?.[0];
+      const homeByField = comp?.competitors?.find(c => c.homeAway === 'home');
+      const awayByField = comp?.competitors?.find(c => c.homeAway === 'away');
+      const homeComp = homeByField ?? comp?.competitors?.[0];
+      const awayComp = awayByField ?? comp?.competitors?.[1];
+
+      const isHome = homeComp?.team?.id === String(team.id);
+      const teamComp = isHome ? homeComp : awayComp;
+      const opponentComp = isHome ? awayComp : homeComp;
+
+      const teamScore = parseInt(teamComp?.score) || 0;
+      const oppScore = parseInt(opponentComp?.score) || 0;
+
+      let result;
+      if (teamScore > oppScore) result = 'W';
+      else if (teamScore < oppScore) result = 'L';
+      else result = 'D';
+
+      return {
+        date: event.date,
+        opponent: opponentComp?.team?.displayName || 'Unknown',
+        venue: isHome ? 'home' : 'away',
+        teamScore,
+        oppScore,
+        result,
+        btts: teamScore > 0 && oppScore > 0,
+        over25: (teamScore + oppScore) > 2,
+      };
+    });
+
+    // Compute aggregates
+    const wins = recentMatches.filter(m => m.result === 'W').length;
+    const draws = recentMatches.filter(m => m.result === 'D').length;
+    const losses = recentMatches.filter(m => m.result === 'L').length;
+    const goalsScored = recentMatches.reduce((s, m) => s + m.teamScore, 0);
+    const goalsConceded = recentMatches.reduce((s, m) => s + m.oppScore, 0);
+    const bttsCount = recentMatches.filter(m => m.btts).length;
+    const over25Count = recentMatches.filter(m => m.over25).length;
+    const cleanSheets = recentMatches.filter(m => m.oppScore === 0).length;
+    const failedToScore = recentMatches.filter(m => m.teamScore === 0).length;
+    const formString = recentMatches.map(m => m.result).join('');
+
+    return {
+      team: teamName,
+      league: ALL_SPORTS[team.sport]?.leagues[team.league] || team.league,
+      matchesAnalyzed: recentMatches.length,
+      formString,
+      record: `${wins}W-${draws}D-${losses}L`,
+      goalsScored,
+      goalsConceded,
+      avgGoalsScored: (goalsScored / recentMatches.length).toFixed(1),
+      avgGoalsConceded: (goalsConceded / recentMatches.length).toFixed(1),
+      bttsCount,
+      bttsRate: `${bttsCount}/${recentMatches.length}`,
+      over25Count,
+      over25Rate: `${over25Count}/${recentMatches.length}`,
+      cleanSheets,
+      failedToScore,
+      recentMatches,
+      dataAvailable: true,
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    return { error: error.message, dataAvailable: false };
+  }
+}
+
 function listAvailableLeagues(sportFilter = null) {
   const leagues = [];
   for (const [sport, config] of Object.entries(ALL_SPORTS)) {
@@ -841,6 +953,28 @@ const TOOL_DEFINITIONS = [
       required: ['team_name', 'league'],
     },
   },
+  {
+    name: 'get_team_form',
+    description: 'Fetch recent match results and form for a specific team. Returns last 5 matches with scores, results (W/D/L), BTTS count, Over 2.5 count, clean sheets, and goals scored/conceded. REQUIRED before making any betting pick — never suggest a pick without calling this for both teams first.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        team_name: {
+          type: 'string',
+          description: 'Full team name e.g. "Deportivo Pereira", "Liverpool"'
+        },
+        league: {
+          type: 'string',
+          description: 'League name to narrow the search e.g. "Colombian Primera A", "Premier League"'
+        },
+        match_count: {
+          type: 'number',
+          description: 'Number of recent matches to fetch (default 5, max 10)'
+        },
+      },
+      required: ['team_name'],
+    },
+  },
 ];
 
 // ============================================
@@ -858,6 +992,7 @@ async function executeTool(name, input) {
     case 'calculate_bet_payout': return calculatePayout(input.odds, input.stake);
     case 'get_football_by_tier': return await fetchFootballByTier(input.tier, input.days_ahead);
     case 'verify_team_stats': return await verifyTeamStats(input.team_name, input.league, input.claimed_stats);
+    case 'get_team_form': return await fetchTeamForm(input.team_name, input.league, input.match_count || 5);
     default: return { error: `Unknown tool: ${name}` };
   }
 }
@@ -1328,6 +1463,9 @@ CRITICAL: Actions must match YOUR response content. If you asked about Aviator s
 [ ] Used ESPN tools for any covered league — NOT web search
 [ ] If web search was used: response opens with "Based on web search results"
 [ ] If web search was used: response closes with fixture confirmation note
+[ ] get_team_form called for BOTH teams before any pick
+[ ] Pick reasoning uses ONLY numbers from get_team_form results
+[ ] If get_team_form returned no data — pick was REFUSED, not fabricated
 [ ] [ACTIONS] block at the end with 3-4 relevant quick actions
 
 ###############################################################################
@@ -1510,7 +1648,91 @@ Based on web search results (not a live data feed):
 - 24 Erzincan vs Kepezspor — 15:00 CAT
 
 Confirm these fixtures on BwanaBet before placing any bets — web search
-results may not reflect recent postponements or time changes.`;
+results may not reflect recent postponements or time changes.
+
+###############################################################################
+##  BETTING PICKS — DATA REQUIREMENTS                                        ##
+###############################################################################
+
+## MANDATORY: CALL get_team_form BEFORE ANY PICK
+
+You MUST call get_team_form for BOTH teams before suggesting any betting pick.
+No exceptions. If you have not called this tool, you have no basis for a pick.
+
+WRONG — never do this:
+  Pick: BTTS Yes
+  Why: "Colombian matches tend to be high scoring" ← FABRICATED, no tool data
+
+RIGHT — always do this:
+  [calls get_team_form for team 1]
+  [calls get_team_form for team 2]
+  Pick: BTTS Yes
+  Why: "Pereira scored in 4 of their last 5 (form: WWDLW, 4 goals scored).
+       Cúcuta scored in 3 of their last 5 (form: WLDLW, 3 goals scored).
+       BTTS landed in 3/5 for Pereira and 3/5 for Cúcuta."
+  ← Every claim traceable to tool results
+
+## WHEN get_team_form RETURNS NO DATA
+
+If get_team_form returns dataAvailable: false or an error, do NOT make a pick.
+Instead respond:
+
+"I don't have enough recent match data for [team] to make a confident pick.
+For the best analysis, check the match stats on BwanaBet directly before placing."
+
+Never invent reasoning to fill the gap. An honest "no data" response protects
+users from betting on fabricated analysis.
+
+## WHAT YOU CAN AND CANNOT CLAIM FROM FORM DATA
+
+FROM get_team_form YOU CAN SAY:
+- "Pereira scored in X of their last 5" ← bttsCount / failedToScore in data
+- "Cúcuta's form is WLDLW" ← formString in data
+- "Over 2.5 landed in X/5 for Pereira" ← over25Count in data
+- "Pereira kept X clean sheets in last 5" ← cleanSheets in data
+
+YOU CANNOT SAY (even with form data):
+- "Colombian football is attacking" ← league-wide claim, not in tool data
+- "Both teams will be motivated" ← motivation not in tool data
+- "This is a must-win game" ← context not in tool data
+- Any claim about injuries, suspensions, or team news ← not in tool data
+
+## CONFIDENCE LEVELS BASED ON DATA
+
+High: Both teams have 5+ matches, form strongly supports the pick
+      e.g. BTTS: both teams scored in 4/5 recent matches
+Medium: Form partially supports the pick, some uncertainty
+      e.g. BTTS: one team scored in 4/5, other in 3/5
+Low: Limited data (fewer than 3 matches) or mixed signals
+      e.g. get_team_form returned only 2 matches
+
+## UPDATED PICK FORMAT
+
+When giving a pick, always show the data behind it:
+
+**[Home Team] vs [Away Team]**
+- Time: [startTime from tool]
+- My Pick: [specific bet type]
+- Confidence: [High/Medium/Low — based on data strength above]
+
+**Form Data:**
+- [Home Team]: [formString] — scored in [X]/[total], BTTS [bttsRate]
+- [Away Team]: [formString] — scored in [X]/[total], BTTS [bttsRate]
+
+**Why this pick:**
+[1-2 sentences using ONLY numbers from get_team_form results]
+
+**How to place on BwanaBet:**
+1. Sports → Football → [League]
+2. Find "[Home] vs [Away]"
+3. Select "[Bet Type]" → "[Selection]"
+4. Start with ZMW 10-20
+5. Tap "Place Bet"
+
+*Disclaimer: I am an AI, this information is for educational purposes only
+and should not be used for gambling or financial risks.*
+
+Remember: only bet what you can afford to lose.`;
 
 
 
