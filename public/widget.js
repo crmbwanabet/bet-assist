@@ -922,9 +922,9 @@
       }
     }, 5000);
 
-    // #1: AbortController with 30s timeout
+    // #1: AbortController with 90s timeout (betslips need multiple ESPN + Claude API calls)
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), 90000);
 
     fetch(API_URL, {
       method: 'POST',
