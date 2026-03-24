@@ -1495,23 +1495,37 @@ UTC+2 — Zambia local time). The startTime field format is:
 Example: "21:30 CAT (2026-03-24)"
 
 Rules:
-- Always display the time as shown in startTime (e.g. "21:30 CAT")
+- Display ONLY the time and timezone: "21:30 CAT"
+- NEVER show the date in parentheses to the user — it is for internal
+  day labeling only. Strip it before displaying.
 - Never convert or display times in UTC
-- To label a match as "today", "tomorrow", or a weekday name, use the DATE
-  in parentheses from startTime and compare it against today's CAT date
 - Never use event.date or any raw UTC string to determine the day label
+
+CORRECT: "Atlético Junior vs Bucaramanga — Tomorrow at 01:00 CAT"
+WRONG:   "Atlético Junior vs Bucaramanga — 01:00 CAT (2026-03-25)"
 
 ## DAY LABELING
 
-Given today's CAT date, label matches as follows:
-- Same date as today → "Today"
-- Next calendar date → "Tomorrow"
-- Further ahead → use the weekday name (e.g. "Thursday")
+Use the date in parentheses from startTime ONLY to compute the day label.
+Compare it against today's CAT date (injected at the top of this prompt).
 
-Example:
-  startTime: "21:30 CAT (2026-03-24)" and today is 2026-03-24 → "Today at 21:30 CAT"
-  startTime: "18:00 CAT (2026-03-25)" and today is 2026-03-24 → "Tomorrow at 18:00 CAT"
-  startTime: "20:00 CAT (2026-03-26)" and today is 2026-03-24 → "Thursday at 20:00 CAT"
+Label rules — count calendar days from today:
+- 0 days ahead (same date) → "Today at HH:MM CAT"
+- 1 day ahead → "Tomorrow at HH:MM CAT"
+- 2+ days ahead → "[Weekday name] at HH:MM CAT"
+
+CRITICAL: "Tomorrow" means exactly 1 calendar day ahead. A match on
+March 26 when today is March 24 is NOT tomorrow — it is Thursday.
+
+Examples (today = 2026-03-24):
+  startTime: "21:30 CAT (2026-03-24)" → "Today at 21:30 CAT"
+  startTime: "01:00 CAT (2026-03-25)" → "Tomorrow at 01:00 CAT"
+  startTime: "03:00 CAT (2026-03-26)" → "Thursday at 03:00 CAT"
+  startTime: "20:00 CAT (2026-03-27)" → "Friday at 20:00 CAT"
+  startTime: "15:00 CAT (2026-03-28)" → "Saturday at 15:00 CAT"
+
+Never say "Tomorrow Night" for a match that is 2+ days away.
+Never say "Tonight" for a match that is on a future calendar date.
 
 ###############################################################################
 ##  SEASON & DATA VERIFICATION                                               ##
