@@ -118,6 +118,48 @@ const LEAGUE_ALIASES = {
 };
 
 // ============================================
+// FOOTBALL LEAGUE TIERS
+// ============================================
+const FOOTBALL_TIERS = {
+  tier1: [
+    { league: 'eng.1', name: 'Premier League' },
+    { league: 'esp.1', name: 'La Liga' },
+    { league: 'ger.1', name: 'Bundesliga' },
+    { league: 'ita.1', name: 'Serie A' },
+    { league: 'fra.1', name: 'Ligue 1' },
+    { league: 'uefa.champions', name: 'UEFA Champions League' },
+    { league: 'uefa.europa', name: 'UEFA Europa League' },
+  ],
+  tier2: [
+    { league: 'ned.1', name: 'Eredivisie' },
+    { league: 'por.1', name: 'Primeira Liga' },
+    { league: 'bel.1', name: 'Belgian Pro League' },
+    { league: 'sco.1', name: 'Scottish Premiership' },
+    { league: 'tur.1', name: 'Süper Lig' },
+    { league: 'uefa.europa.conf', name: 'Conference League' },
+    { league: 'eng.2', name: 'Championship' },
+    { league: 'eng.fa', name: 'FA Cup' },
+    { league: 'esp.copa_del_rey', name: 'Copa del Rey' },
+    { league: 'ger.dfb_pokal', name: 'DFB Pokal' },
+    { league: 'ita.coppa_italia', name: 'Coppa Italia' },
+    { league: 'fra.coupe_de_france', name: 'Coupe de France' },
+  ],
+  tier3: [
+    { league: 'usa.1', name: 'MLS' },
+    { league: 'mex.1', name: 'Liga MX' },
+    { league: 'bra.1', name: 'Brasileirão' },
+    { league: 'arg.1', name: 'Liga Profesional' },
+    { league: 'sau.1', name: 'Saudi Pro League' },
+    { league: 'jpn.1', name: 'J1 League' },
+    { league: 'aus.1', name: 'A-League' },
+    { league: 'rsa.1', name: 'PSL South Africa' },
+    { league: 'egy.1', name: 'Egyptian Premier League' },
+    { league: 'conmebol.libertadores', name: 'Copa Libertadores' },
+    { league: 'caf.nations', name: 'Africa Cup of Nations' },
+  ],
+};
+
+// ============================================
 // UTILITIES
 // ============================================
 function resolveLeague(input) {
@@ -454,6 +496,48 @@ function calculatePayout(odds, stake) {
 }
 
 // ============================================
+// TIERED FOOTBALL FETCH
+// ============================================
+async function fetchFootballByTier(tier, daysAhead = 7) {
+  const days = Math.min(Math.max(parseInt(daysAhead) || 7, 1), 30);
+  const tierLeagues = FOOTBALL_TIERS[tier];
+  if (!tierLeagues) return { error: `Unknown tier: ${tier}. Use "tier1", "tier2", or "tier3".` };
+
+  const results = await Promise.all(
+    tierLeagues.map(async ({ league, name }) => {
+      try {
+        const data = await fetchGamesForLeague('soccer', league, days);
+        if (data.error) return { league: name, leagueId: league, error: data.error, totalGames: 0 };
+        return {
+          league: name,
+          leagueId: league,
+          totalGames: data.totalGames || 0,
+          liveGames: data.liveGames || [],
+          upcomingGames: data.upcomingGames || [],
+          completedGames: data.completedGames || [],
+        };
+      } catch (e) {
+        return { league: name, leagueId: league, error: e.message, totalGames: 0 };
+      }
+    })
+  );
+
+  const withGames = results.filter(r => r.totalGames > 0);
+  const totalMatches = withGames.reduce((sum, r) => sum + r.totalGames, 0);
+
+  return {
+    tier,
+    tierName: tier === 'tier1' ? 'Major Leagues' : tier === 'tier2' ? 'Secondary European Leagues & Cups' : 'Americas, Africa, Asia & Oceania',
+    daysAhead: days,
+    totalMatches,
+    leaguesWithGames: withGames.length,
+    leaguesChecked: tierLeagues.length,
+    leagues: withGames,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+// ============================================
 // TOOL DEFINITIONS (for Claude API)
 // ============================================
 const TOOL_DEFINITIONS = [
@@ -497,6 +581,18 @@ const TOOL_DEFINITIONS = [
     description: 'Calculate potential payout for a bet given odds and stake.',
     input_schema: { type: 'object', properties: { odds: { type: 'number' }, stake: { type: 'number' } }, required: ['odds', 'stake'] },
   },
+  {
+    name: 'get_football_by_tier',
+    description: 'Fetch football/soccer matches from a specific tier of leagues. Tier 1: Major leagues (EPL, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, Europa League). Tier 2: Secondary European leagues and cups (Eredivisie, Primeira Liga, Belgian Pro League, Scottish Premiership, Süper Lig, Conference League, Championship, FA Cup, Copa del Rey, DFB Pokal, Coppa Italia, Coupe de France). Tier 3: Americas, Africa, Asia and Oceania (MLS, Liga MX, Brasileirão, Liga Profesional, Saudi Pro League, J1 League, A-League, PSL South Africa, Egyptian Premier League, Copa Libertadores, AFCON). Use this when user asks broadly about football matches. Start with tier1, and if no matches found, ASK the user before checking tier2 or tier3.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tier: { type: 'string', description: 'Which tier to fetch: "tier1", "tier2", or "tier3"' },
+        days_ahead: { type: 'number', description: 'Number of days ahead to fetch (1-30, default 7)' },
+      },
+      required: ['tier'],
+    },
+  },
 ];
 
 // ============================================
@@ -512,6 +608,7 @@ async function executeTool(name, input) {
     case 'get_head_to_head': return await fetchHeadToHead(input.team1, input.team2, input.league);
     case 'list_leagues': return listAvailableLeagues(input.sport);
     case 'calculate_bet_payout': return calculatePayout(input.odds, input.stake);
+    case 'get_football_by_tier': return await fetchFootballByTier(input.tier, input.days_ahead);
     default: return { error: `Unknown tool: ${name}` };
   }
 }
@@ -692,10 +789,54 @@ You have these tools for REAL-TIME data. ALWAYS use them — never guess:
 - **get_head_to_head**: Compare two teams side by side.
 - **list_leagues**: Show all available sports and leagues.
 - **calculate_bet_payout**: Calculate returns from odds + stake.
+- **get_football_by_tier**: Fetch football matches across a full tier of leagues at once. Use when user asks broadly about football.
 
 Use get_games FIRST when asked about matches, then get_game_stats for details.
 Use get_standings for league tables.
 Use get_team_stats or get_head_to_head for team analysis.
+
+###############################################################################
+##  FOOTBALL MATCH SEARCH — TIMEFRAME & TIERED FALLBACK                     ##
+###############################################################################
+
+## TIMEFRAME PARSING
+
+When a user asks about football/soccer matches, FIRST determine the timeframe:
+
+- "today" / "tonight" / "now" → days_ahead=1
+- "tomorrow" → days_ahead=2
+- "this week" / "this weekend" / "next few days" → days_ahead=7
+- "this month" / "next weeks" → days_ahead=30
+- "this season" → Tell the user you can check up to 30 days ahead, and ask if they want a specific window
+
+If the timeframe is UNCLEAR (e.g., "any matches?", "what's on?", "football matches"):
+Ask: "Are you looking for matches today, this week, or further ahead?"
+Wait for the user's answer before fetching.
+
+## TIERED LEAGUE FALLBACK
+
+When a user asks broadly about football (not a specific league), use get_football_by_tier:
+
+**Step 1**: Fetch tier1 (Major Leagues) with the parsed timeframe.
+
+**Step 2**: If tier1 returns totalMatches > 0, present the results. Done.
+
+**Step 3**: If tier1 returns totalMatches = 0, tell the user:
+"No matches found in the major leagues (EPL, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, Europa League) for [timeframe]."
+Then ask: "Want me to check secondary European leagues and cups (Eredivisie, Primeira Liga, Scottish Premiership, domestic cups, and more)?"
+
+**Step 4**: If the user says yes and tier2 also returns 0, tell the user:
+"No matches found in secondary European leagues either for [timeframe]."
+Then ask: "Want me to check leagues from the Americas, Africa, Asia, and Oceania (MLS, Brasileirão, Saudi Pro League, PSL South Africa, and more)?"
+
+**Step 5**: If tier3 also returns 0:
+"No football matches found across any league for [timeframe]. This might be an off-day or international break. Want to try a different timeframe?"
+
+IMPORTANT:
+- NEVER silently expand to other tiers without asking the user first
+- ALWAYS state which leagues were checked and the timeframe when reporting no results
+- If the user asks about a SPECIFIC league (e.g., "Premier League matches"), use get_games directly — do not use the tiered system
+- When presenting results from any tier, always label each match with its league name
 
 ###############################################################################
 ##  HANDLING TOOL RESULTS                                                    ##
