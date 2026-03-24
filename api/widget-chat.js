@@ -364,14 +364,27 @@ async function fetchGamesForLeague(sport, league, daysAhead = 7) {
 
     const games = (data.events || []).map(event => {
       const comp = event.competitions?.[0];
-      // Prefer homeAway field; fall back to array position (index 0 = home per ESPN convention)
+      // Try to read homeAway from the field ESPN provides
       const homeByField = comp?.competitors?.find(c => c.homeAway === 'home');
       const awayByField = comp?.competitors?.find(c => c.homeAway === 'away');
-      const home = homeByField ?? comp?.competitors?.[0];
-      const away = awayByField ?? comp?.competitors?.[1];
+
+      // ESPN does not always return homeAway for South American leagues.
+      // When the field is missing, fall back to array position — but note that
+      // South American leagues return away at [0] and home at [1], which is the
+      // reverse of European leagues (home at [0]).
+      const southAmericanLeagues = [
+        'arg.1', 'col.1', 'uru.1', 'bra.1', 'mex.1',
+        'arg.copa', 'conmebol.libertadores',
+      ];
+      const isSouthAmerican = southAmericanLeagues.includes(league);
+      const fallbackHomeIndex = isSouthAmerican ? 1 : 0;
+      const fallbackAwayIndex = isSouthAmerican ? 0 : 1;
+
+      const home = homeByField ?? comp?.competitors?.[fallbackHomeIndex];
+      const away = awayByField ?? comp?.competitors?.[fallbackAwayIndex];
 
       if (homeByField === undefined) {
-        console.warn(`[espn] homeAway field missing for event ${event.id} in ${league} — using array position`);
+        console.warn(`[espn] homeAway field missing for event ${event.id} in ${league} — using position[${fallbackHomeIndex}] as home`);
       }
 
       return {
@@ -385,7 +398,7 @@ async function fetchGamesForLeague(sport, league, daysAhead = 7) {
         },
         homeTeam: home ? { name: home.team?.displayName, abbreviation: home.team?.abbreviation, score: home.score || '0' } : null,
         awayTeam: away ? { name: away.team?.displayName, abbreviation: away.team?.abbreviation, score: away.score || '0' } : null,
-        homeAwaySource: homeByField ? 'field' : 'position',
+        _homeAwaySource: homeByField ? 'field' : `position[${fallbackHomeIndex}]`,
         venue: comp?.venue?.fullName,
         startTime: event.date,
       };
@@ -1315,6 +1328,20 @@ CRITICAL: Actions must match YOUR response content. If you asked about Aviator s
 [ ] Includes responsible gambling reminder if suggesting a bet
 [ ] No fabricated data, no guessing, no approximation
 [ ] [ACTIONS] block at the end with 3-4 relevant quick actions
+
+## FIXTURE DISPLAY RULES
+
+When listing fixtures, ALWAYS format as:
+  Home Team vs Away Team
+
+NEVER use "at" (e.g. "Cúcuta at Pereira") — this implies Cúcuta is away,
+which may be wrong. Use "vs" which is neutral and unambiguous.
+
+Example:
+WRONG: "Cúcuta Deportivo at Deportivo Pereira"
+RIGHT: "Cúcuta Deportivo vs Deportivo Pereira (Pereira's ground)"
+
+The homeTeam field in tool results is always the home side.
 
 ###############################################################################
 ##  SEASON & DATA VERIFICATION                                               ##
