@@ -670,7 +670,7 @@ function getCurrentSeason(sport) {
   return `${year}`;
 }
 
-async function fetchTeamForm(teamName, leagueInput = null, matchCount = 5) {
+async function fetchTeamForm(teamName, leagueInput = null, matchCount = 10) {
   // Step 1: find the team
   const searchResults = await searchTeam(teamName);
   if (searchResults.totalFound === 0) {
@@ -780,6 +780,115 @@ async function fetchTeamForm(teamName, leagueInput = null, matchCount = 5) {
   } catch (error) {
     return { error: error.message, dataAvailable: false };
   }
+}
+
+// ============================================
+// BETSLIP MANAGER
+// ============================================
+
+function manageBetslip(action, currentSlip, pickData = null, removeIndex = null) {
+  // currentSlip is passed in from Claude's conversation context as a JSON string
+  let slip;
+  try {
+    slip = currentSlip ? JSON.parse(currentSlip) : { picks: [] };
+  } catch (e) {
+    slip = { picks: [] };
+  }
+
+  switch (action) {
+
+    case 'add': {
+      if (!pickData) return { error: 'pickData required for add action' };
+      const pick = {
+        id: Date.now(),
+        match: pickData.match,           // "Deportivo Pereira vs Cúcuta"
+        homeTeam: pickData.homeTeam,
+        awayTeam: pickData.awayTeam,
+        betType: pickData.betType,       // "BTTS Yes", "Home Win", "Over 2.5"
+        confidence: pickData.confidence, // "High", "Medium", "Low"
+        basis: pickData.basis,           // short reasoning string from form data
+        missingData: pickData.missingData || null, // what was unavailable
+        addedAt: new Date().toISOString(),
+      };
+      slip.picks.push(pick);
+      return {
+        action: 'added',
+        pick,
+        slip,
+        slipJson: JSON.stringify(slip),
+        totalPicks: slip.picks.length,
+        summary: buildSlipSummary(slip),
+      };
+    }
+
+    case 'remove': {
+      if (removeIndex === null || removeIndex === undefined) {
+        return { error: 'removeIndex required for remove action (0-based)' };
+      }
+      const idx = parseInt(removeIndex);
+      if (idx < 0 || idx >= slip.picks.length) {
+        return { error: `Invalid index ${idx}. Slip has ${slip.picks.length} picks (0 to ${slip.picks.length - 1}).` };
+      }
+      const removed = slip.picks.splice(idx, 1)[0];
+      return {
+        action: 'removed',
+        removedPick: removed,
+        slip,
+        slipJson: JSON.stringify(slip),
+        totalPicks: slip.picks.length,
+        summary: buildSlipSummary(slip),
+      };
+    }
+
+    case 'view': {
+      return {
+        action: 'view',
+        slip,
+        slipJson: JSON.stringify(slip),
+        totalPicks: slip.picks.length,
+        summary: buildSlipSummary(slip),
+      };
+    }
+
+    case 'clear': {
+      slip.picks = [];
+      return {
+        action: 'cleared',
+        slip,
+        slipJson: JSON.stringify(slip),
+        totalPicks: 0,
+        summary: 'Betslip cleared.',
+      };
+    }
+
+    default:
+      return { error: `Unknown action: ${action}. Use add, remove, view, or clear.` };
+  }
+}
+
+function buildSlipSummary(slip) {
+  if (!slip.picks.length) return 'Betslip is empty.';
+
+  const confidenceRank = { High: 3, Medium: 2, Low: 1 };
+  const weakest = slip.picks.reduce((min, p) =>
+    (confidenceRank[p.confidence] || 0) < (confidenceRank[min.confidence] || 0) ? p : min,
+    slip.picks[0]
+  );
+
+  const lines = slip.picks.map((p, i) =>
+    `${i + 1}. ${p.match} — ${p.betType} [${p.confidence}]${p.missingData ? ' ⚠️' : ''}`
+  );
+
+  return {
+    totalPicks: slip.picks.length,
+    type: slip.picks.length === 1 ? 'Single' : 'Accumulator',
+    overallConfidence: weakest.confidence,
+    picks: lines,
+    hasGaps: slip.picks.some(p => p.missingData),
+    note: slip.picks.length > 1
+      ? `Accumulator confidence is ${weakest.confidence} — driven by the weakest leg.`
+      : null,
+  };
 }
 
 function listAvailableLeagues(sportFilter = null) {
@@ -982,10 +1091,45 @@ const TOOL_DEFINITIONS = [
         },
         match_count: {
           type: 'number',
-          description: 'Number of recent matches to fetch (default 5, max 10)'
+          description: 'Number of recent matches to fetch (default 10, max 10)'
         },
       },
       required: ['team_name'],
+    },
+  },
+  {
+    name: 'manage_betslip',
+    description: 'Add, remove, view, or clear picks on the user\'s session betslip. The betslip persists across conversation turns. ALWAYS call get_team_form for both teams BEFORE calling manage_betslip with action="add". Pass the current slip JSON from conversation context as current_slip.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          description: 'One of: "add", "remove", "view", "clear"',
+        },
+        current_slip: {
+          type: 'string',
+          description: 'Current betslip as JSON string from conversation context. Pass empty string if no slip exists yet.',
+        },
+        pick_data: {
+          type: 'object',
+          description: 'Required for action="add". Contains match, homeTeam, awayTeam, betType, confidence, basis, missingData.',
+          properties: {
+            match: { type: 'string', description: 'e.g. "Deportivo Pereira vs Cúcuta Deportivo"' },
+            homeTeam: { type: 'string' },
+            awayTeam: { type: 'string' },
+            betType: { type: 'string', description: 'e.g. "BTTS Yes", "Home Win", "Over 2.5", "Draw", "Double Chance"' },
+            confidence: { type: 'string', description: 'High, Medium, or Low' },
+            basis: { type: 'string', description: 'Short reasoning from form data only' },
+            missingData: { type: 'string', description: 'What data was unavailable, or null if complete' },
+          },
+        },
+        remove_index: {
+          type: 'number',
+          description: 'Required for action="remove". 0-based index of pick to remove.',
+        },
+      },
+      required: ['action', 'current_slip'],
     },
   },
 ];
@@ -1005,7 +1149,13 @@ async function executeTool(name, input) {
     case 'calculate_bet_payout': return calculatePayout(input.odds, input.stake);
     case 'get_football_by_tier': return await fetchFootballByTier(input.tier, input.days_ahead);
     case 'verify_team_stats': return await verifyTeamStats(input.team_name, input.league, input.claimed_stats);
-    case 'get_team_form': return await fetchTeamForm(input.team_name, input.league, input.match_count || 5);
+    case 'get_team_form': return await fetchTeamForm(input.team_name, input.league, input.match_count || 10);
+    case 'manage_betslip': return manageBetslip(
+      input.action,
+      input.current_slip,
+      input.pick_data || null,
+      input.remove_index ?? null
+    );
     default: return { error: `Unknown tool: ${name}` };
   }
 }
@@ -1504,9 +1654,12 @@ CRITICAL: Actions must match YOUR response content. If you asked about Aviator s
 [ ] Used ESPN tools for any covered league — NOT web search
 [ ] If web search was used: response opens with "Based on web search results"
 [ ] If web search was used: response closes with fixture confirmation note
-[ ] get_team_form called for BOTH teams before any pick
+[ ] get_team_form called for BOTH teams before any pick or betslip add
 [ ] Pick reasoning uses ONLY numbers from get_team_form results
-[ ] If get_team_form returned no data — pick was REFUSED, not fabricated
+[ ] If data missing: gap named, research links provided, confidence set to Low
+[ ] If no data: pick clearly labelled "My Best Guess", confidence Low
+[ ] Betslip displayed in correct format with separator lines
+[ ] Accumulator confidence = weakest leg's confidence
 [ ] [ACTIONS] block at the end with 3-4 relevant quick actions
 
 ###############################################################################
@@ -1787,7 +1940,165 @@ When giving a pick, always show the data behind it:
 *Disclaimer: I am an AI, this information is for educational purposes only
 and should not be used for gambling or financial risks.*
 
-Remember: only bet what you can afford to lose.`;
+Remember: only bet what you can afford to lose.
+
+###############################################################################
+##  BETSLIP MANAGEMENT                                                       ##
+###############################################################################
+
+## SESSION BETSLIP
+
+The user has a betslip that persists across messages. You maintain it using
+manage_betslip. The current slip JSON must be carried forward in every turn.
+
+When the user says any of these → call manage_betslip:
+- "add [match] to my betslip" / "add that to my slip" → action: add
+- "show my betslip" / "what's on my slip" / "my picks" → action: view
+- "remove pick [N]" / "take off the first one" → action: remove
+- "clear my betslip" / "start over" / "remove all" → action: clear
+
+BEFORE action="add", you MUST:
+1. Call get_team_form for the home team
+2. Call get_team_form for the away team
+3. Analyse the data (or gaps) to determine bet type and confidence
+4. THEN call manage_betslip with action="add"
+
+Never add a pick to the slip without completing steps 1-3 first.
+
+## BETSLIP DISPLAY FORMAT
+
+When showing the betslip (view or after add), format it as:
+
+─────────────────────────────
+MY BETSLIP ([N] pick[s])
+─────────────────────────────
+1. [Home] vs [Away]
+   Bet: [betType]
+   Confidence: [High/Medium/Low]
+   Based on: [basis from form data]
+   [⚠️ Missing: missingData — see research links below]
+
+2. [next pick...]
+
+Type: [Single / Accumulator]
+Overall Confidence: [weakest leg's confidence]
+─────────────────────────────
+[If any picks have missing data:]
+⚠️ Research links for incomplete picks:
+- Sofascore: https://www.sofascore.com/search/#[teamName]
+- Flashscore: https://www.flashscore.com
+─────────────────────────────
+
+Ready to go?
+
+###############################################################################
+##  PICK ANALYSIS — GAP DISCLOSURE & BEST GUESS                             ##
+###############################################################################
+
+## THE RULE: ALWAYS GIVE A PICK, ALWAYS DISCLOSE GAPS
+
+Never refuse to give a pick. But always be transparent about data quality.
+
+FULL DATA AVAILABLE (High confidence):
+→ Give pick with full form data backing it
+→ Every claim traceable to get_team_form results
+→ Confidence: High or Medium based on how strongly data supports it
+
+PARTIAL DATA (one team missing, or fewer than 5 matches):
+→ Give pick based on available data
+→ Name exactly what is missing
+→ Give research links for the missing data
+→ Confidence: never above Medium when data is partial
+
+NO DATA (ESPN returned nothing for both teams):
+→ Give best guess based on standings or general knowledge
+→ Clearly label it as a guess
+→ Give research links for both teams
+→ Confidence: always Low
+
+## PICK FORMAT — FULL DATA
+
+**My Pick:** [betType]
+
+**Based on:**
+- [Home team]: [formString] — scored in [X]/[total], BTTS [bttsRate], Over 2.5 [over25Rate]
+- [Away team]: [formString] — scored in [X]/[total], BTTS [bttsRate], Over 2.5 [over25Rate]
+- [1-2 sentence conclusion using ONLY numbers from tool results]
+
+**Confidence:** [High/Medium/Low]
+
+## PICK FORMAT — PARTIAL DATA
+
+**My Pick:** [betType]
+
+**Based on:**
+- [Available team]: [formString] — [key stats from tool]
+- [Missing team]: No recent data available
+
+**What's missing:** [specific gap — e.g. "Cúcuta's last 10 results and goals scored"]
+
+**Where to research:**
+- https://www.sofascore.com/search/#[missing team name]
+- https://www.flashscore.com (search [missing team name] → Last matches)
+
+**Confidence:** Low — one-sided data. Verify before placing.
+
+## PICK FORMAT — NO DATA
+
+**My Best Guess:** [betType]
+
+This is a guess — I have no recent form data for either team from ESPN.
+
+**Reasoning:** [standings-based or general reasoning only — clearly labelled as inference]
+
+**What's missing:** Recent form, goals data, and H2H for both teams.
+
+**Where to research:**
+- https://www.sofascore.com/search/#[home team]
+- https://www.sofascore.com/search/#[away team]
+- https://www.flashscore.com (search both teams → Last matches → H2H)
+- https://www.soccerstats.com (Colombian/Uruguayan league pages)
+
+**Confidence:** Low — please verify all data before placing this bet.
+
+## CONFIDENCE RULES — STRICT
+
+High:
+- Form data available for BOTH teams (5+ matches each)
+- Data clearly and strongly supports the pick
+- e.g. BTTS: both teams scored in 7+ of last 10
+
+Medium:
+- Form data available for both teams BUT sample is small (3-4 matches)
+- OR data for both teams but pick is only moderately supported
+- e.g. BTTS: one team scored in 5/10, other in 4/10 — mixed signals
+
+Low:
+- Data missing for one or both teams
+- OR fewer than 3 matches available
+- OR pick is a best guess with no form data
+- Never upgrade Low to Medium just because the pick "feels right"
+
+## ACCUMULATOR CONFIDENCE
+
+When the slip has multiple picks:
+- Overall confidence = confidence of the WEAKEST leg
+- Always state which leg is weakest and why
+- Example: "Overall confidence is Low — the Fortaleza pick has no away form data"
+
+## WHAT YOU CANNOT CLAIM — EVEN WITH A PICK
+
+Even when giving a best guess, NEVER say:
+- "This league tends to be high scoring" ← league-wide claim not from tools
+- "Both teams will be motivated" ← motivation not in tool data
+- "This is a must-win for [team]" ← context not in tool data
+- Any injury or suspension news ← not in ESPN data
+- Any tactical analysis ← not in tool data
+
+You can say:
+- "Based on standings, [team] are higher placed" ← standings tool data
+- "Their last 10 results show [X]" ← form tool data
+- "I don't have enough data to be confident — this is a guess" ← honest disclosure`;
 
 
 
