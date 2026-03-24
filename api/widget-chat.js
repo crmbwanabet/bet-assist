@@ -17,22 +17,42 @@ const ALL_SPORTS = {
   soccer: {
     name: 'Soccer/Football',
     leagues: {
+      // Major European
       'eng.1': 'Premier League', 'eng.2': 'Championship', 'eng.fa': 'FA Cup',
       'esp.1': 'La Liga', 'esp.copa_del_rey': 'Copa del Rey',
       'ger.1': 'Bundesliga', 'ger.dfb_pokal': 'DFB Pokal',
       'ita.1': 'Serie A', 'ita.coppa_italia': 'Coppa Italia',
       'fra.1': 'Ligue 1', 'fra.coupe_de_france': 'Coupe de France',
+      // Secondary European
       'ned.1': 'Eredivisie', 'por.1': 'Primeira Liga', 'bel.1': 'Belgian Pro League',
       'sco.1': 'Scottish Premiership', 'tur.1': 'Süper Lig',
-      'arg.1': 'Liga Profesional', 'bra.1': 'Brasileirão',
-      'usa.1': 'MLS', 'mex.1': 'Liga MX',
-      'sau.1': 'Saudi Pro League', 'jpn.1': 'J1 League', 'aus.1': 'A-League',
-      'rsa.1': 'PSL South Africa', 'egy.1': 'Egyptian Premier League',
+      'gre.1': 'Greek Super League', 'sui.1': 'Swiss Super League',
+      'aut.1': 'Austrian Bundesliga', 'den.1': 'Danish Superliga',
+      'swe.1': 'Swedish Allsvenskan', 'nor.1': 'Norwegian Eliteserien',
+      'cze.1': 'Czech First League', 'rus.1': 'Russian Premier League',
+      'cyp.1': 'Cypriot First Division', 'isr.1': 'Israeli Premier League',
+      // European competitions
       'uefa.champions': 'UEFA Champions League', 'uefa.europa': 'UEFA Europa League',
       'uefa.europa.conf': 'Conference League',
+      'uefa.euro': 'UEFA Euro',
+      // Americas
+      'usa.1': 'MLS', 'mex.1': 'Liga MX',
+      'bra.1': 'Brasileirão', 'arg.1': 'Liga Profesional',
+      'col.1': 'Colombian Primera A', 'chi.1': 'Chilean Primera División',
+      'uru.1': 'Uruguayan Primera División', 'per.1': 'Peruvian Primera División',
       'conmebol.libertadores': 'Copa Libertadores',
-      'fifa.world': 'FIFA World Cup', 'uefa.euro': 'UEFA Euro',
+      // Africa
+      'rsa.1': 'PSL South Africa', 'egy.1': 'Egyptian Premier League',
+      'zam.1': 'Zambian Super League', 'ken.1': 'Kenyan Premier League',
+      'nga.1': 'Nigerian Professional League', 'gha.1': 'Ghana Premier League',
+      'uga.1': 'Ugandan Premier League',
       'caf.nations': 'Africa Cup of Nations',
+      // Asia & Oceania
+      'sau.1': 'Saudi Pro League', 'jpn.1': 'J1 League', 'aus.1': 'A-League',
+      'chn.1': 'Chinese Super League', 'idn.1': 'Indonesian Liga 1',
+      'tha.1': 'Thai League', 'ind.1': 'Indian Super League',
+      // World
+      'fifa.world': 'FIFA World Cup',
     },
     baseUrl: 'https://site.api.espn.com/apis/site/v2/sports/soccer',
   },
@@ -115,6 +135,34 @@ const LEAGUE_ALIASES = {
   'nascar': { sport: 'racing', league: 'nascar-cup' },
   'ipl': { sport: 'cricket', league: 'ipl' },
   'six nations': { sport: 'rugby', league: 'six-nations' },
+  // New football league aliases
+  'greek super league': { sport: 'soccer', league: 'gre.1' },
+  'swiss super league': { sport: 'soccer', league: 'sui.1' },
+  'austrian bundesliga': { sport: 'soccer', league: 'aut.1' },
+  'danish superliga': { sport: 'soccer', league: 'den.1' },
+  'allsvenskan': { sport: 'soccer', league: 'swe.1' },
+  'eliteserien': { sport: 'soccer', league: 'nor.1' },
+  'czech league': { sport: 'soccer', league: 'cze.1' },
+  'russian premier league': { sport: 'soccer', league: 'rus.1' },
+  'colombian league': { sport: 'soccer', league: 'col.1' },
+  'primera a': { sport: 'soccer', league: 'col.1' },
+  'chilean league': { sport: 'soccer', league: 'chi.1' },
+  'uruguayan league': { sport: 'soccer', league: 'uru.1' },
+  'peruvian league': { sport: 'soccer', league: 'per.1' },
+  'chinese super league': { sport: 'soccer', league: 'chn.1' },
+  'indonesian liga': { sport: 'soccer', league: 'idn.1' },
+  'thai league': { sport: 'soccer', league: 'tha.1' },
+  'indian super league': { sport: 'soccer', league: 'ind.1' },
+  'isl': { sport: 'soccer', league: 'ind.1' },
+  'zambian super league': { sport: 'soccer', league: 'zam.1' },
+  'zambian league': { sport: 'soccer', league: 'zam.1' },
+  'kenyan league': { sport: 'soccer', league: 'ken.1' },
+  'nigerian league': { sport: 'soccer', league: 'nga.1' },
+  'ghana premier league': { sport: 'soccer', league: 'gha.1' },
+  'ugandan league': { sport: 'soccer', league: 'uga.1' },
+  'psl': { sport: 'soccer', league: 'rsa.1' },
+  'cypriot league': { sport: 'soccer', league: 'cyp.1' },
+  'israeli league': { sport: 'soccer', league: 'isr.1' },
 };
 
 // ============================================
@@ -136,25 +184,50 @@ const FOOTBALL_TIERS = {
     { league: 'bel.1', name: 'Belgian Pro League' },
     { league: 'sco.1', name: 'Scottish Premiership' },
     { league: 'tur.1', name: 'Süper Lig' },
+    { league: 'gre.1', name: 'Greek Super League' },
+    { league: 'sui.1', name: 'Swiss Super League' },
+    { league: 'aut.1', name: 'Austrian Bundesliga' },
+    { league: 'den.1', name: 'Danish Superliga' },
+    { league: 'swe.1', name: 'Swedish Allsvenskan' },
+    { league: 'nor.1', name: 'Norwegian Eliteserien' },
+    { league: 'cze.1', name: 'Czech First League' },
+    { league: 'rus.1', name: 'Russian Premier League' },
+    { league: 'cyp.1', name: 'Cypriot First Division' },
+    { league: 'isr.1', name: 'Israeli Premier League' },
     { league: 'uefa.europa.conf', name: 'Conference League' },
     { league: 'eng.2', name: 'Championship' },
+  ],
+  tier3: [
     { league: 'eng.fa', name: 'FA Cup' },
     { league: 'esp.copa_del_rey', name: 'Copa del Rey' },
     { league: 'ger.dfb_pokal', name: 'DFB Pokal' },
     { league: 'ita.coppa_italia', name: 'Coppa Italia' },
     { league: 'fra.coupe_de_france', name: 'Coupe de France' },
-  ],
-  tier3: [
     { league: 'usa.1', name: 'MLS' },
     { league: 'mex.1', name: 'Liga MX' },
     { league: 'bra.1', name: 'Brasileirão' },
     { league: 'arg.1', name: 'Liga Profesional' },
+    { league: 'col.1', name: 'Colombian Primera A' },
+    { league: 'chi.1', name: 'Chilean Primera División' },
+    { league: 'uru.1', name: 'Uruguayan Primera División' },
+    { league: 'per.1', name: 'Peruvian Primera División' },
+    { league: 'conmebol.libertadores', name: 'Copa Libertadores' },
+  ],
+  tier4: [
     { league: 'sau.1', name: 'Saudi Pro League' },
     { league: 'jpn.1', name: 'J1 League' },
     { league: 'aus.1', name: 'A-League' },
+    { league: 'chn.1', name: 'Chinese Super League' },
+    { league: 'idn.1', name: 'Indonesian Liga 1' },
+    { league: 'tha.1', name: 'Thai League' },
+    { league: 'ind.1', name: 'Indian Super League' },
     { league: 'rsa.1', name: 'PSL South Africa' },
     { league: 'egy.1', name: 'Egyptian Premier League' },
-    { league: 'conmebol.libertadores', name: 'Copa Libertadores' },
+    { league: 'zam.1', name: 'Zambian Super League' },
+    { league: 'ken.1', name: 'Kenyan Premier League' },
+    { league: 'nga.1', name: 'Nigerian Professional League' },
+    { league: 'gha.1', name: 'Ghana Premier League' },
+    { league: 'uga.1', name: 'Ugandan Premier League' },
     { league: 'caf.nations', name: 'Africa Cup of Nations' },
   ],
 };
@@ -500,8 +573,59 @@ function calculatePayout(odds, stake) {
 // ============================================
 async function fetchFootballByTier(tier, daysAhead = 7) {
   const days = Math.min(Math.max(parseInt(daysAhead) || 7, 1), 30);
+
+  const TIER_NAMES = {
+    tier1: 'Major European Leagues',
+    tier2: 'Secondary European Leagues',
+    tier3: 'Domestic Cups & Americas',
+    tier4: 'Africa, Asia & Oceania',
+    all: 'All Leagues Worldwide',
+  };
+
+  // "all" fetches every tier in parallel
+  if (tier === 'all') {
+    const allLeagues = [
+      ...FOOTBALL_TIERS.tier1,
+      ...FOOTBALL_TIERS.tier2,
+      ...FOOTBALL_TIERS.tier3,
+      ...FOOTBALL_TIERS.tier4,
+    ];
+    const results = await Promise.all(
+      allLeagues.map(async ({ league, name }) => {
+        try {
+          const data = await fetchGamesForLeague('soccer', league, days);
+          if (data.error) return { league: name, leagueId: league, totalGames: 0 };
+          return {
+            league: name,
+            leagueId: league,
+            totalGames: data.totalGames || 0,
+            liveGames: data.liveGames || [],
+            upcomingGames: data.upcomingGames || [],
+            completedGames: data.completedGames || [],
+          };
+        } catch (e) {
+          return { league: name, leagueId: league, totalGames: 0 };
+        }
+      })
+    );
+
+    const withGames = results.filter(r => r.totalGames > 0);
+    const totalMatches = withGames.reduce((sum, r) => sum + r.totalGames, 0);
+
+    return {
+      tier: 'all',
+      tierName: TIER_NAMES.all,
+      daysAhead: days,
+      totalMatches,
+      leaguesWithGames: withGames.length,
+      leaguesChecked: allLeagues.length,
+      leagues: withGames,
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+
   const tierLeagues = FOOTBALL_TIERS[tier];
-  if (!tierLeagues) return { error: `Unknown tier: ${tier}. Use "tier1", "tier2", or "tier3".` };
+  if (!tierLeagues) return { error: `Unknown tier: ${tier}. Use "tier1", "tier2", "tier3", "tier4", or "all".` };
 
   const results = await Promise.all(
     tierLeagues.map(async ({ league, name }) => {
@@ -527,7 +651,7 @@ async function fetchFootballByTier(tier, daysAhead = 7) {
 
   return {
     tier,
-    tierName: tier === 'tier1' ? 'Major Leagues' : tier === 'tier2' ? 'Secondary European Leagues & Cups' : 'Americas, Africa, Asia & Oceania',
+    tierName: TIER_NAMES[tier] || tier,
     daysAhead: days,
     totalMatches,
     leaguesWithGames: withGames.length,
@@ -583,11 +707,11 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'get_football_by_tier',
-    description: 'Fetch football/soccer matches from a specific tier of leagues. Tier 1: Major leagues (EPL, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, Europa League). Tier 2: Secondary European leagues and cups (Eredivisie, Primeira Liga, Belgian Pro League, Scottish Premiership, Süper Lig, Conference League, Championship, FA Cup, Copa del Rey, DFB Pokal, Coppa Italia, Coupe de France). Tier 3: Americas, Africa, Asia and Oceania (MLS, Liga MX, Brasileirão, Liga Profesional, Saudi Pro League, J1 League, A-League, PSL South Africa, Egyptian Premier League, Copa Libertadores, AFCON). Use this when user asks broadly about football matches. Start with tier1, and if no matches found, ASK the user before checking tier2 or tier3.',
+    description: 'Fetch football/soccer matches from a specific tier or ALL leagues at once. Use tier "all" when user asks broadly about football matches (e.g., "what matches are on today?") to scan all 53 leagues in parallel. Tier 1: Major European (EPL, La Liga, Bundesliga, Serie A, Ligue 1, UCL, UEL). Tier 2: Secondary European (Eredivisie, Primeira Liga, Belgian, Scottish, Turkish, Greek, Swiss, Austrian, Danish, Swedish, Norwegian, Czech, Russian, Cypriot, Israeli, Conference League, Championship). Tier 3: Domestic cups & Americas (FA Cup, Copa del Rey, DFB Pokal, MLS, Liga MX, Brasileirão, Colombian, Chilean, Uruguayan, Peruvian, Copa Libertadores). Tier 4: Africa, Asia & Oceania (Saudi Pro League, J1 League, A-League, Chinese, Indonesian, Thai, Indian Super League, PSL South Africa, Egyptian, Zambian Super League, Kenyan, Nigerian, Ghanaian, Ugandan, AFCON).',
     input_schema: {
       type: 'object',
       properties: {
-        tier: { type: 'string', description: 'Which tier to fetch: "tier1", "tier2", or "tier3"' },
+        tier: { type: 'string', description: 'Which tier to fetch: "all" (recommended for broad queries), "tier1", "tier2", "tier3", or "tier4"' },
         days_ahead: { type: 'number', description: 'Number of days ahead to fetch (1-30, default 7)' },
       },
       required: ['tier'],
@@ -814,30 +938,34 @@ If the timeframe is UNCLEAR (e.g., "any matches?", "what's on?", "football match
 Ask: "Are you looking for matches today, this week, or further ahead?"
 Wait for the user's answer before fetching.
 
-## TIERED LEAGUE FALLBACK
+## BROAD FOOTBALL QUERIES — USE "all"
 
-When a user asks broadly about football (not a specific league), use get_football_by_tier:
+When a user asks broadly about football matches (e.g., "what matches are on today?", "any football today?", "show me matches this week"):
+- Use get_football_by_tier with tier "all" — this scans 53 leagues across 4 tiers in parallel
+- This is the DEFAULT for any broad football query. Do NOT start with tier1 only.
 
-**Step 1**: Fetch tier1 (Major Leagues) with the parsed timeframe.
+When a user asks about a SPECIFIC league (e.g., "Premier League matches", "La Liga this week"):
+- Use get_games directly with that league — do not use the tiered system.
 
-**Step 2**: If tier1 returns totalMatches > 0, present the results. Done.
+When a user asks about a SPECIFIC region:
+- "European matches" → use tier1 + tier2
+- "South American matches" → use tier3
+- "African matches" or "Asian matches" → use tier4
 
-**Step 3**: If tier1 returns totalMatches = 0, tell the user:
-"No matches found in the major leagues (EPL, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, Europa League) for [timeframe]."
-Then ask: "Want me to check secondary European leagues and cups (Eredivisie, Primeira Liga, Scottish Premiership, domestic cups, and more)?"
+## PRESENTING RESULTS
 
-**Step 4**: If the user says yes and tier2 also returns 0, tell the user:
-"No matches found in secondary European leagues either for [timeframe]."
-Then ask: "Want me to check leagues from the Americas, Africa, Asia, and Oceania (MLS, Brasileirão, Saudi Pro League, PSL South Africa, and more)?"
+- Always label each match with its league name
+- Group matches by league for readability
+- Show live matches first, then upcoming, then completed
+- If totalMatches = 0 for "all", tell the user:
+  "No football matches found across any league for [timeframe]. This might be an off-day or international break. Want to try a different timeframe?"
 
-**Step 5**: If tier3 also returns 0:
-"No football matches found across any league for [timeframe]. This might be an off-day or international break. Want to try a different timeframe?"
+## TIER REFERENCE
 
-IMPORTANT:
-- NEVER silently expand to other tiers without asking the user first
-- ALWAYS state which leagues were checked and the timeframe when reporting no results
-- If the user asks about a SPECIFIC league (e.g., "Premier League matches"), use get_games directly — do not use the tiered system
-- When presenting results from any tier, always label each match with its league name
+- **Tier 1** — Major European: EPL, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, Europa League
+- **Tier 2** — Secondary European: Eredivisie, Primeira Liga, Belgian, Scottish, Turkish, Greek, Swiss, Austrian, Danish, Swedish, Norwegian, Czech, Russian, Cypriot, Israeli, Conference League, Championship
+- **Tier 3** — Domestic Cups & Americas: FA Cup, Copa del Rey, DFB Pokal, MLS, Liga MX, Brasileirão, Colombian, Chilean, Uruguayan, Peruvian, Copa Libertadores
+- **Tier 4** — Africa, Asia & Oceania: Saudi Pro League, J1 League, A-League, Chinese, Indonesian, Thai, Indian Super League, PSL South Africa, Egyptian, Zambian Super League, Kenyan, Nigerian, Ghanaian, Ugandan, AFCON
 
 ###############################################################################
 ##  WEB SEARCH — WHEN AND HOW TO USE IT                                     ##
