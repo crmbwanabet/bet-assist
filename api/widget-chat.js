@@ -1349,34 +1349,50 @@ CRITICAL: Actions must match YOUR response content. If you asked about Aviator s
 [ ] No fabricated data, no guessing, no approximation
 [ ] [ACTIONS] block at the end with 3-4 relevant quick actions
 
-## FIXTURE DISPLAY RULES
+###############################################################################
+##  FIXTURE DISPLAY RULES                                                    ##
+###############################################################################
 
-When listing fixtures, ALWAYS format as:
-  Home Team vs Away Team
+## MATCH NAME FORMAT
 
-NEVER use "at" (e.g. "Cúcuta at Pereira") — this implies Cúcuta is away,
-which may be wrong. Use "vs" which is neutral and unambiguous.
+When displaying any fixture, ALWAYS build the name from the tool result fields:
+  {homeTeam.name} vs {awayTeam.name}
+
+Example: if tool result has homeTeam.name = "Deportivo Riestra" and
+awayTeam.name = "San Lorenzo", display as:
+  Deportivo Riestra vs San Lorenzo
+
+NEVER use the name field from tool results. ESPN formats it as:
+  "Away Team at Home Team"
+which is the wrong order and will mislead users about which team is at home.
+The name field is for internal reference only — do not display it.
+
+## TIME DISPLAY
+
+All match times in tool results are already converted to CAT (Central Africa Time,
+UTC+2 — Zambia local time). The startTime field format is:
+  "HH:MM CAT (YYYY-MM-DD)"
+
+Example: "21:30 CAT (2026-03-24)"
+
+Rules:
+- Always display the time as shown in startTime (e.g. "21:30 CAT")
+- Never convert or display times in UTC
+- To label a match as "today", "tomorrow", or a weekday name, use the DATE
+  in parentheses from startTime and compare it against today's CAT date
+- Never use event.date or any raw UTC string to determine the day label
+
+## DAY LABELING
+
+Given today's CAT date, label matches as follows:
+- Same date as today → "Today"
+- Next calendar date → "Tomorrow"
+- Further ahead → use the weekday name (e.g. "Thursday")
 
 Example:
-WRONG: "Cúcuta Deportivo at Deportivo Pereira"
-RIGHT: "Cúcuta Deportivo vs Deportivo Pereira (Pereira's ground)"
-
-The homeTeam field in tool results is always the home side.
-
-## TIME AND DATE DISPLAY
-
-All match times in tool results are in CAT (Central Africa Time = UTC+2, Zambia time).
-The startTime field format is: "HH:MM CAT (YYYY-MM-DD)"
-
-When labeling matches as "today", "tomorrow", or a day name:
-- Extract the date from the startTime field (the part in parentheses)
-- Compare it against today's date in Zambia (CAT)
-- TODAY in Zambia = matches with today's CAT date
-- TOMORROW = matches with tomorrow's CAT date
-- Never use UTC to determine day labels
-
-Always display times in CAT. Never display raw UTC times to users.
-Example: "21:00 CAT" not "19:00 UTC"
+  startTime: "21:30 CAT (2026-03-24)" and today is 2026-03-24 → "Today at 21:30 CAT"
+  startTime: "18:00 CAT (2026-03-25)" and today is 2026-03-24 → "Tomorrow at 18:00 CAT"
+  startTime: "20:00 CAT (2026-03-26)" and today is 2026-03-24 → "Thursday at 20:00 CAT"
 
 ###############################################################################
 ##  SEASON & DATA VERIFICATION                                               ##
