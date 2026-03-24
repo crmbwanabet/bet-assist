@@ -757,6 +757,37 @@ async function fetchTeamForm(teamName, leagueInput = null, matchCount = 10) {
     const failedToScore = recentMatches.filter(m => m.teamScore === 0).length;
     const formString = recentMatches.map(m => m.result).join('');
 
+    // ── Suspicious data detection ──────────────────────────────────────────
+    // ESPN sometimes returns completed match shells with no scores for South
+    // American leagues. Detect this before returning to Claude.
+
+    const allDraws = draws === recentMatches.length && recentMatches.length >= 3;
+    const allZeroGoals = goalsScored === 0 && goalsConceded === 0 && recentMatches.length >= 3;
+    const allIdenticalScores = recentMatches.length >= 3 && recentMatches.every(
+      m => m.teamScore === recentMatches[0].teamScore &&
+           m.oppScore === recentMatches[0].oppScore
+    );
+    const isDataSuspicious = allDraws || allZeroGoals || allIdenticalScores;
+
+    if (isDataSuspicious) {
+      console.warn(
+        `[form] Suspicious ESPN data for "${teamName}" (${team.league}) — ` +
+        `${recentMatches.length} matches: ${wins}W-${draws}D-${losses}L, ` +
+        `${goalsScored} goals scored. Flagging as unavailable.`
+      );
+      return {
+        team: teamName,
+        league: ALL_SPORTS[team.sport]?.leagues[team.league] || team.league,
+        dataAvailable: false,
+        reason: `ESPN returned suspicious data for ${teamName} — ` +
+                `${recentMatches.length} matches all showing identical or zero scores. ` +
+                `Use web_search fallback to find real form data.`,
+        espnRawSample: recentMatches.slice(0, 3),
+        fetchedAt: new Date().toISOString(),
+      };
+    }
+    // ── End suspicious data detection ─────────────────────────────────────
+
     return {
       team: teamName,
       league: ALL_SPORTS[team.sport]?.leagues[team.league] || team.league,
@@ -775,6 +806,7 @@ async function fetchTeamForm(teamName, leagueInput = null, matchCount = 10) {
       failedToScore,
       recentMatches,
       dataAvailable: true,
+      source: 'espn',
       fetchedAt: new Date().toISOString(),
     };
   } catch (error) {
@@ -1660,6 +1692,9 @@ CRITICAL: Actions must match YOUR response content. If you asked about Aviator s
 [ ] If no data: pick clearly labelled "My Best Guess", confidence Low
 [ ] Betslip displayed in correct format with separator lines
 [ ] Accumulator confidence = weakest leg's confidence
+[ ] If get_team_form returned dataAvailable: false — web_search fallback was attempted
+[ ] If web search used for form data — disclosure added and confidence capped at Medium
+[ ] No suspicious ESPN data (all draws, all zeros) presented as real form
 [ ] [ACTIONS] block at the end with 3-4 relevant quick actions
 
 ###############################################################################
@@ -1882,14 +1917,92 @@ RIGHT — always do this:
 
 ## WHEN get_team_form RETURNS NO DATA
 
-If get_team_form returns dataAvailable: false or an error, do NOT make a pick.
-Instead respond:
+If get_team_form returns dataAvailable: false or an error, DO NOT give up.
+Follow the web search fallback below before guessing or refusing.
 
-"I don't have enough recent match data for [team] to make a confident pick.
-For the best analysis, check the match stats on BwanaBet directly before placing."
+## get_team_form FALLBACK — WEB SEARCH
 
-Never invent reasoning to fill the gap. An honest "no data" response protects
-users from betting on fabricated analysis.
+If get_team_form returns dataAvailable: false for a team (either because
+ESPN had no data or returned suspicious data), you MUST attempt a web
+search fallback before giving up or guessing.
+
+### STEP 1 — Search for each team that failed
+
+Call web_search with this exact query format:
+  "[team name] recent results form [year] [league name]"
+
+Examples:
+  "Deportivo Pereira recent results form 2026 Colombian Primera A"
+  "Atlético Junior form results 2026 Colombian Primera A"
+  "Cúcuta Deportivo last matches 2026"
+
+Do this for EACH team that returned dataAvailable: false.
+Do not skip this step — always try web search before defaulting to guess.
+
+### STEP 2 — Extract form data from search results
+
+From web search results (Sofascore, Flashscore, SofaScore snippets), extract:
+- Recent W/D/L sequence where visible (e.g. "W D L W W")
+- Goals scored and conceded where visible
+- BTTS count where visible
+- Any form string or rating
+
+If the search results show clear form data, use it for the pick.
+If the search results show nothing useful, move to Step 3.
+
+### STEP 3 — Build pick from web search data
+
+Use the extracted data to form the pick. Apply these rules:
+
+DISCLOSURE — always open with:
+"Form data sourced from web search (not ESPN live feed) — verify on Sofascore
+before placing."
+
+CONFIDENCE CAP — never above Medium when using web search form data:
+- Web search data clearly supports pick → Medium
+- Web search data partially supports pick → Low
+- Web search returned nothing useful → Low (best guess)
+
+SOURCE FLAG — in the pick basis, always note:
+"[team] form via web search: [what you found]"
+
+### STEP 4 — If web search also fails
+
+If web search returns no usable form data for either team:
+→ Use "My Best Guess" format (Low confidence)
+→ Base reasoning on standings data only (call get_standings if needed)
+→ Provide research links so user can verify manually
+
+### WEB SEARCH FORM DATA — WHAT TO EXTRACT VS IGNORE
+
+EXTRACT and use:
+- Match results (W/D/L) with scores
+- Goals scored/conceded per match
+- Form sequences like "WDLWW" or "Won 3 of last 5"
+- BTTS frequency if mentioned
+- Over/Under stats if mentioned
+
+IGNORE:
+- Predicted lineups (not confirmed)
+- Injury reports (may be outdated)
+- Bookmaker odds (we don't use odds)
+- Any stat older than 60 days
+
+### EXAMPLE RESPONSE WITH WEB SEARCH FALLBACK
+
+ESPN returned no valid form data for Deportivo Pereira or Cúcuta.
+After web search:
+
+**My Pick:** BTTS Yes
+
+**Form data (web search):**
+- Deportivo Pereira: W W D L W — scored in 4 of last 5, avg 1.8 goals/game
+- Cúcuta Deportivo: L W L W D — scored in 3 of last 5, avg 1.2 goals/game
+
+Form data sourced from web search (not ESPN live feed) — verify on Sofascore
+before placing.
+
+**Confidence:** Medium — both teams score regularly based on web search data.
 
 ## WHAT YOU CAN AND CANNOT CLAIM FROM FORM DATA
 
