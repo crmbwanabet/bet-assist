@@ -363,7 +363,6 @@ async function fetchGames(leagueInput, daysAhead = 7) {
 
 async function fetchGamesForLeague(sport, league, daysAhead = 7) {
   const baseUrl = buildUrl(sport, league, 'scoreboard');
-  console.log(`[espn-debug] fetchGamesForLeague called — sport="${sport}" league="${league}" isSouthAmerican=${['arg.1','col.1','uru.1','bra.1','mex.1','arg.copa','conmebol.libertadores'].includes(league)}`);
   if (!baseUrl) return { error: `Could not build URL for ${sport}/${league}` };
 
   const dateParam = buildDateRange(daysAhead, league);
