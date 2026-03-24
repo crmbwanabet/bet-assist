@@ -1754,7 +1754,7 @@ Remember: only bet what you can afford to lose.`;
 // WIDGET CHAT HANDLER
 // ============================================
 
-const MAX_TOOL_LOOPS = 6;
+const MAX_TOOL_LOOPS = 12;
 const MAX_TOKENS = 1536;
 
 async function supabaseInsert(table, data) {
