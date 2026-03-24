@@ -393,7 +393,7 @@ async function fetchGamesForLeague(sport, league, daysAhead = 7) {
         home = comp?.competitors?.[1];
         away = comp?.competitors?.[0];
         homeAwaySource = 'position[1]=home (SA override)';
-        console.log(`[espn] ${league} event ${event.id} — using SA position override`);
+        console.log(`[ha-debug] ${league} event "${event.name}" — competitors[0]="${comp?.competitors?.[0]?.team?.displayName}" competitors[1]="${comp?.competitors?.[1]?.team?.displayName}" — assigned home="${home?.team?.displayName}" away="${away?.team?.displayName}"`);
       } else {
         // For all other leagues: trust the homeAway field, fall back to [0]=home.
         const homeByField = comp?.competitors?.find(c => c.homeAway === 'home');
