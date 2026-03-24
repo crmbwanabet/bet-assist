@@ -408,7 +408,6 @@ async function fetchGamesForLeague(sport, league, daysAhead = 7) {
 
       return {
         id: event.id,
-        name: event.name,
         date: event.date,
         status: {
           state: event.status?.type?.state,
