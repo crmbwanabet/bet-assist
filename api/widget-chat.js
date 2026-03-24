@@ -362,6 +362,7 @@ async function fetchGames(leagueInput, daysAhead = 7) {
 }
 
 async function fetchGamesForLeague(sport, league, daysAhead = 7) {
+  console.log(`[path-debug] sport="${sport}" league="${league}" type=${typeof league}`);
   const baseUrl = buildUrl(sport, league, 'scoreboard');
   if (!baseUrl) return { error: `Could not build URL for ${sport}/${league}` };
 
