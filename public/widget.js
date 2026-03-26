@@ -440,6 +440,20 @@
     .be-messages::-webkit-scrollbar-track { background: transparent; }
     .be-messages::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 2px; }
 
+    .be-scroll-down {
+      position: absolute; bottom: 110px; right: 18px;
+      width: 34px; height: 34px;
+      border-radius: 50%; border: none;
+      background: #f59e0b; color: #0f172a;
+      cursor: pointer; display: none;
+      align-items: center; justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      z-index: 10; font-size: 18px; line-height: 1;
+      transition: opacity 0.2s;
+    }
+    .be-scroll-down:hover { background: #fbbf24; }
+    .be-scroll-down.be-visible { display: flex; }
+
     /* Messages */
     .be-msg {
       max-width: 88%; padding: 10px 14px;
@@ -629,6 +643,7 @@
       <!-- CHAT VIEW -->
       <div class="be-chat" id="beChatView">
         <div class="be-messages" id="beMessages"></div>
+        <button class="be-scroll-down" id="beScrollDown">↓</button>
         <div class="be-actions" id="beActions"></div>
         <div class="be-input-row">
           <input class="be-input" id="beInput" type="text" placeholder="Ask about matches, odds, picks..." autocomplete="off" />
@@ -1014,7 +1029,7 @@
     el.className = 'be-msg be-msg-user';
     el.textContent = text;
     messagesEl.appendChild(el);
-    scrollDown();
+    scrollDown(true);
   }
 
   function addBotMessage(text) {
@@ -1030,16 +1045,31 @@
     el.className = 'be-typing'; el.id = 'beTyping';
     el.innerHTML = '<div class="be-dot"></div><div class="be-dot"></div><div class="be-dot"></div><span class="be-typing-text" id="beTypingText"></span>';
     messagesEl.appendChild(el);
-    scrollDown();
+    scrollDown(true);
   }
 
   function hideTyping() {
     shadow.getElementById('beTyping')?.remove();
   }
 
-  function scrollDown() {
-    requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
+  function isNearBottom() {
+    const threshold = 60;
+    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < threshold;
   }
+
+  function scrollDown(force) {
+    if (force || isNearBottom()) {
+      requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
+    }
+  }
+
+  // Scroll-down arrow button
+  const scrollBtn = shadow.getElementById('beScrollDown');
+  messagesEl.addEventListener("scroll", () => {
+    if (isNearBottom()) scrollBtn.classList.remove('be-visible');
+    else scrollBtn.classList.add('be-visible');
+  });
+  scrollBtn.addEventListener("click", () => { scrollDown(true); });
 
   function restoreChat() {
     if (state.messages.length > 0) {
@@ -1048,7 +1078,7 @@
         if (m.role === 'user') addUserMessage(m.content);
         else if (m.role === 'assistant') addBotMessage(m.content);
       });
-      scrollDown();
+      scrollDown(true);
       const lastBot = state.messages.filter(m => m.role === 'assistant').pop();
       renderActions(getSmartActions(lastBot?.content || ''));
     }
