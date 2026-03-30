@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BetExpert AI - Personalized Sports Betting Assistant</title>
+  <title>BetPredict AI - Personalized Sports Betting Assistant</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     @keyframes typing-dot {
@@ -234,7 +234,7 @@
             <span class="text-xl"></span>
           </div>
           <div>
-            <h1 class="font-bold text-white">BetExpert AI</h1>
+            <h1 class="font-bold text-white">BetPredict AI</h1>
             <div class="flex items-center gap-1">
               <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
               <span class="text-xs text-slate-400">Personalized Sports Betting AI</span>
@@ -355,7 +355,7 @@
     <div class="modal-content">
       <!-- Step 1: Phone Number -->
       <div id="loginStep1">
-        <h2 class="text-xl font-bold text-white mb-2">Login to BetExpert</h2>
+        <h2 class="text-xl font-bold text-white mb-2">Login to BetPredict</h2>
         <p class="text-slate-400 text-sm mb-4">Enter your phone number to save your preferences and betting history</p>
         
         <div class="mb-4">
@@ -4611,7 +4611,7 @@ Ready for your first pick?`,
     // SYSTEM PROMPT
     // ============================================
 
-    const SYSTEM_PROMPT = `You are BetExpert, a sports data assistant. You have ONE absolute rule: EVERY statistic MUST come directly from search results with a citation.
+    const SYSTEM_PROMPT = `You are BetPredict, a sports data assistant. You have ONE absolute rule: EVERY statistic MUST come directly from search results with a citation.
 
 ###############################################################################
 ##  MANDATORY CITATION SYSTEM                                                ##
@@ -6734,7 +6734,7 @@ No search needed for casino.`;
         // Check if beginner or returning user
         const isNewUser = userMemory.experienceLevel === null;
         
-        response = `**Welcome to BetExpert**\n- ${engagement.liveBettersText}`;
+        response = `**Welcome to BetPredict**\n- ${engagement.liveBettersText}`;
         if (engagement.trending) {
           response += `\n- Trending now: ${engagement.trending.pick}`;
         }
@@ -6801,7 +6801,7 @@ No search needed for casino.`;
       // Help - INSTANT
       if (msg === 'help' || msg === '?' || msg === 'what can you do') {
         const engagement = getEngagementContext();
-        response = "**BetExpert Features**\n" +
+        response = "**BetPredict Features**\n" +
                    "- Match predictions\n" +
                    "- Casino strategies\n" +
                    "- Bonus tracking\n" +
@@ -6934,7 +6934,7 @@ No search needed for casino.`;
               <div class="w-6 h-6 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 flex items-center justify-center">
                 <span class="text-xs"></span>
               </div>
-              <span class="text-xs font-medium text-amber-400">BetExpert AI</span>
+              <span class="text-xs font-medium text-amber-400">BetPredict AI</span>
               <span class="text-xs text-slate-500">• Live Data</span>
             </div>
           ` : ''}
@@ -7013,7 +7013,7 @@ No search needed for casino.`;
               <div class="w-6 h-6 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 flex items-center justify-center">
                 <span class="text-xs"></span>
               </div>
-              <span class="text-xs font-medium text-amber-400">BetExpert AI</span>
+              <span class="text-xs font-medium text-amber-400">BetPredict AI</span>
               <span class="text-xs text-slate-500">• Live Data</span>
             </div>
           ` : ''}
@@ -7102,7 +7102,7 @@ No search needed for casino.`;
         ];
       } else if (isLoggedIn) {
         // Logged in but no memories yet
-        welcomeText = `**Welcome to BetExpert!**\n\n`;
+        welcomeText = `**Welcome to BetPredict!**\n\n`;
         welcomeText += `You're logged in! I'll remember your preferences as we chat.\n\n`;
         welcomeText += `What do you prefer?`;
         
@@ -7112,7 +7112,7 @@ No search needed for casino.`;
         ];
       } else {
         // Not logged in - show standard welcome
-        welcomeText = `**Welcome to BetExpert!**\n\n`;
+        welcomeText = `**Welcome to BetPredict!**\n\n`;
         welcomeText += `I'm here to help you win.\n\n`;
         welcomeText += `What do you prefer?`;
 
@@ -7885,18 +7885,18 @@ No search needed for casino.`;
     window.refreshStats = refreshStats;
 
     window.onload = async function() {
-      console.log(' BetExpert AI Starting...');
+      console.log(' BetPredict AI Starting...');
       console.log(' Using API proxy:', API_CONFIG.chatUrl);
       console.log(' Supabase:', SUPABASE_CONFIG.enabled ? SUPABASE_CONFIG.url : 'disabled (using localStorage)');
       
       try {
         await initializeApp();
-        console.log(' BetExpert AI Ready!');
+        console.log(' BetPredict AI Ready!');
       } catch (error) {
         console.error(' Initialization failed:', error);
         document.getElementById('messages').innerHTML = `
           <div class="bg-red-500/20 border border-red-500 rounded-xl p-4 text-red-200">
-            <strong>BetExpert is having trouble starting up.</strong><br>
+            <strong>BetPredict is having trouble starting up.</strong><br>
             Please refresh the page. If the problem continues, try again later.<br>
             <small>Check browser console for details</small>
           </div>
