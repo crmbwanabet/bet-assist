@@ -1,11 +1,11 @@
 // ============================================
-// BetExpert Widget — Self-Contained Chat Endpoint — v2.1.0
+// BetPredict Widget — Self-Contained Chat Endpoint — v2.1.0
 // All-in-one: sports engine + system prompt + tool loop + monitoring
 // No external imports — everything inline for Vercel compatibility
 // ============================================
 
 // ============================================
-// BetExpert — Server-Side Sports Engine
+// BetPredict — Server-Side Sports Engine
 // Extracted from index.html for use in Vercel serverless functions.
 // Provides: ESPN data fetching, tool definitions, and executeTool().
 // ============================================
@@ -1209,11 +1209,11 @@ function truncateResult(result) {
 
 
 // ============================================
-// BetExpert — System Prompt (matches full app design)
+// BetPredict — System Prompt (matches full app design)
 // Single source of truth for widget personality & rules
 // ============================================
 
-const SYSTEM_PROMPT = `You are BetExpert, the AI sports betting assistant on BwanaBet.com — Zambia's premier betting platform. You have ONE absolute rule: EVERY statistic MUST come directly from tool results.
+const SYSTEM_PROMPT = `You are BetPredict, the AI sports betting assistant on BwanaBet.com — Zambia's premier betting platform. You have ONE absolute rule: EVERY statistic MUST come directly from tool results.
 
 ###############################################################################
 ##  MANDATORY DATA INTEGRITY SYSTEM                                          ##
@@ -2523,7 +2523,7 @@ async function slackAlert(severity, title, details = {}) {
   if (details.cost) fields.push({ type: 'mrkdwn', text: `*Cost:*\n${details.cost}` });
 
   const blocks = [
-    { type: 'header', text: { type: 'plain_text', text: `${emoji} BETEXPERT ${severity.toUpperCase()}` } },
+    { type: 'header', text: { type: 'plain_text', text: `${emoji} BETPREDICT ${severity.toUpperCase()}` } },
     { type: 'section', fields },
   ];
 

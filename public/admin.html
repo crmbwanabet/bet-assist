@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BetExpert Admin — Command Center</title>
+  <title>BetPredict Admin — Command Center</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -120,7 +120,7 @@
 <!-- ===== AUTH OVERLAY ===== -->
 <div id="authOverlay" class="auth-overlay">
   <div class="text-center">
-    <div class="text-3xl font-bold text-white mb-1">BetExpert</div>
+    <div class="text-3xl font-bold text-white mb-1">BetPredict</div>
     <div class="text-sm text-slate-500 mb-8">Admin Command Center</div>
     <div class="flex gap-3 items-center justify-center">
       <input id="secretInput" type="password" placeholder="Admin secret" autofocus
@@ -137,7 +137,7 @@
   <!-- Header -->
   <header class="border-b border-slate-800/50 px-6 py-4 flex items-center justify-between">
     <div>
-      <h1 class="text-xl font-bold text-white">BetExpert <span class="text-blue-400 font-normal text-sm">Admin</span></h1>
+      <h1 class="text-xl font-bold text-white">BetPredict <span class="text-blue-400 font-normal text-sm">Admin</span></h1>
     </div>
     <div class="flex items-center gap-4">
       <span id="lastRefresh" class="text-xs text-slate-600 mono"></span>
@@ -330,7 +330,7 @@
   // ============================================
   // AUTH
   // ============================================
-  let adminSecret = sessionStorage.getItem('betexpert_admin_secret') || '';
+  let adminSecret = sessionStorage.getItem('betpredict_admin_secret') || '';
   let charts = {};
 
   if (adminSecret) {
@@ -350,7 +350,7 @@
         document.getElementById('authError').classList.remove('hidden');
         return;
       }
-      sessionStorage.setItem('betexpert_admin_secret', adminSecret);
+      sessionStorage.setItem('betpredict_admin_secret', adminSecret);
       document.getElementById('authOverlay').classList.add('hidden');
       document.getElementById('mainApp').classList.remove('hidden');
       refreshAll();
@@ -367,7 +367,7 @@
         headers: { 'x-admin-secret': adminSecret },
       });
       if (resp.status === 401) {
-        sessionStorage.removeItem('betexpert_admin_secret');
+        sessionStorage.removeItem('betpredict_admin_secret');
         document.getElementById('authOverlay').classList.remove('hidden');
         document.getElementById('mainApp').classList.add('hidden');
         return { error: 'Unauthorized' };

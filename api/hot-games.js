@@ -1,5 +1,5 @@
 // ============================================
-// BetExpert — Hot Games Daily Rotation API
+// BetPredict — Hot Games Daily Rotation API
 // Picks 4 games per day, spread across categories,
 // weighted by popularity, rotated by last_featured date.
 // Results cached for 1 day.

@@ -1,5 +1,5 @@
 /**
- * BetExpert AI Widget v2 — Embeddable Chat for BwanaBet.com
+ * BetPredict AI Widget v2 — Embeddable Chat for BwanaBet.com
  * 
  * Features:
  *  - Shadow DOM isolation
@@ -21,13 +21,13 @@
   // ============================================
   // CONFIG
   // ============================================
-  const SCRIPT = document.getElementById('betexpert-widget') || document.currentScript || document.querySelector('script[src*="bet-assist"]');
+  const SCRIPT = document.getElementById('betpredict-widget') || document.currentScript || document.querySelector('script[src*="bet-assist"]');
   const BASE_URL = SCRIPT?.src ? new URL(SCRIPT.src).origin : '';
   const API_URL = BASE_URL + '/api/widget-chat';
   const HOT_GAMES_URL = BASE_URL + '/api/hot-games';
   const OFFSET_BOTTOM = parseInt(SCRIPT?.getAttribute('data-offset-bottom') || '80', 10);
   const OFFSET_RIGHT = parseInt(SCRIPT?.getAttribute('data-offset-right') || '20', 10);
-  const STORAGE_KEY = 'betexpert_widget';
+  const STORAGE_KEY = 'betpredict_widget';
 
   // Hot games (fetched on first open)
   let hotGames = null;
@@ -615,7 +615,7 @@
   // BUILD DOM
   // ============================================
   const host = document.createElement('div');
-  host.id = 'betexpert-widget';
+  host.id = 'betpredict-widget';
   const shadow = host.attachShadow({ mode: 'open' });
 
   const style = document.createElement('style');
@@ -629,7 +629,7 @@
       <div class="be-header">
         <div class="be-header-icon">${ICO.ball}</div>
         <div>
-          <div class="be-h-title">BetExpert AI</div>
+          <div class="be-h-title">BetPredict AI</div>
           <div class="be-h-sub" id="beHeaderSub">Sports Assistant</div>
         </div>
         <div class="be-h-user" id="beUserInfo" style="display:none">
@@ -637,7 +637,7 @@
           <button class="be-h-logout" id="beLogout" title="Log out">✕</button>
         </div>
         <div class="be-h-dot" id="beHeaderDot"></div>
-        <button class="be-h-dismiss" id="beDismiss" aria-label="Dismiss widget" title="Close BetExpert">✕</button>
+        <button class="be-h-dismiss" id="beDismiss" aria-label="Dismiss widget" title="Close BetPredict">✕</button>
       </div>
 
       <!-- CHAT VIEW -->
@@ -655,7 +655,7 @@
         </div>
       </div>
     </div>
-    <button class="be-btn" id="beToggle" aria-label="Open BetExpert AI">
+    <button class="be-btn" id="beToggle" aria-label="Open BetPredict AI">
       ${ICO.ball}
       <div class="be-badge" id="beBadge"></div>
       <div class="be-dismiss-float" id="beDismissFloat" title="Remove widget">✕</div>
@@ -791,8 +791,8 @@
       if (state.messages.length === 0) {
         const hotLine = getHotGameGreeting();
         const greeting = state.user
-          ? `Hey ${state.user.name}! I am BetExpert the BwanaBet AI.\n\nI am here to give you expert AI sports analysis and tips.\n\nYou can use me to help analyse your bets and sports picks.\n\nI can help you to explain different betting options and what they mean.\n\nI can also tell you which slot games are worth playing right now to get payouts.\n\nAsk me any question!`
-          : `Hi!\n\nI am BetExpert the BwanaBet AI.\n\nI am here to give you expert AI sports analysis and tips.\n\nYou can use me to help analyse your bets and sports picks.\n\nI can help you to explain different betting options and what they mean.\n\nI can also tell you which slot games are worth playing right now to get payouts.\n\nAsk me any question!`;
+          ? `Hey ${state.user.name}! I am BetPredict the BwanaBet AI.\n\nI am here to give you expert AI sports analysis and tips.\n\nYou can use me to help analyse your bets and sports picks.\n\nI can help you to explain different betting options and what they mean.\n\nI can also tell you which slot games are worth playing right now to get payouts.\n\nAsk me any question!`
+          : `Hi!\n\nI am BetPredict the BwanaBet AI.\n\nI am here to give you expert AI sports analysis and tips.\n\nYou can use me to help analyse your bets and sports picks.\n\nI can help you to explain different betting options and what they mean.\n\nI can also tell you which slot games are worth playing right now to get payouts.\n\nAsk me any question!`;
         addBotMessage(greeting);
         renderActions(DEFAULT_ACTIONS);
       } else {
@@ -858,7 +858,7 @@
     userInfo.style.display = 'none';
     headerDot.style.display = '';
     const hotLine = getHotGameGreeting();
-    addBotMessage(`Hi!\n\nI am BetExpert the BwanaBet AI.\n\nI am here to give you expert AI sports analysis and tips.\n\nYou can use me to help analyse your bets and sports picks.\n\nI can help you to explain different betting options and what they mean.\n\nI can also tell you which slot games are worth playing right now to get payouts.\n\nAsk me any question!`);
+    addBotMessage(`Hi!\n\nI am BetPredict the BwanaBet AI.\n\nI am here to give you expert AI sports analysis and tips.\n\nYou can use me to help analyse your bets and sports picks.\n\nI can help you to explain different betting options and what they mean.\n\nI can also tell you which slot games are worth playing right now to get payouts.\n\nAsk me any question!`);
     renderActions(DEFAULT_ACTIONS);
   });
 
@@ -976,7 +976,7 @@
       })
       .catch(err => {
         hideTyping();
-        console.error('[BetExpert]', err);
+        console.error('[BetPredict]', err);
         if (err.name === 'AbortError') {
           addBotMessage("That took too long. Try a simpler question or try again.");
         } else if (err.message === 'RATE_LIMITED') {

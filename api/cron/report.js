@@ -1,5 +1,5 @@
 // ============================================
-// BetExpert — 4-Hour Scheduled Report (Vercel Cron)
+// BetPredict — 4-Hour Scheduled Report (Vercel Cron)
 // Runs every 4 hours, queries Supabase, sends summary to Slack
 // Self-contained — no imports
 // ============================================
@@ -90,7 +90,7 @@ export default async function handler(req, res) {
     const blocks = [
       {
         type: 'header',
-        text: { type: 'plain_text', text: '📊 BETEXPERT — 4 Hour Report' },
+        text: { type: 'plain_text', text: '📊 BETPREDICT — 4 Hour Report' },
       },
       {
         type: 'section',
@@ -157,7 +157,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const sent = await sendToSlack(blocks, `📊 BetExpert: ${totalRequests} requests, $${periodCost.toFixed(2)} cost, ${errorRate}% errors`);
+    const sent = await sendToSlack(blocks, `📊 BetPredict: ${totalRequests} requests, $${periodCost.toFixed(2)} cost, ${errorRate}% errors`);
 
     return res.status(200).json({
       sent,

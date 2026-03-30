@@ -1,5 +1,5 @@
 // ============================================
-// BetExpert — Server-Side Sports Engine
+// BetPredict — Server-Side Sports Engine
 // Extracted from index.html for use in Vercel serverless functions.
 // Provides: ESPN data fetching, tool definitions, and executeTool().
 // ============================================
