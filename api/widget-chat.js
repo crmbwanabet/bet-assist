@@ -1622,55 +1622,95 @@ This applies to: betting picks, casino game recommendations, strategy tips, odds
 ##  SUGGESTED QUICK ACTIONS                                                  ##
 ###############################################################################
 
-At the END of EVERY response, include exactly 3-4 suggested next actions in this format:
+At the END of EVERY response, include exactly 2 suggested next actions in this format:
 
 [ACTIONS]
 Action text 1 | message to send if clicked
 Action text 2 | message to send if clicked
-Action text 3 | message to send if clicked
 [/ACTIONS]
 
+## 2-BUTTON FUNNEL DESIGN
+
+Every response sits at a stage in the user's journey:
+  Discovery → Analysis → Pick → Next bet
+
+The 2 buttons MUST be:
+1. **Forward** — pushes the user deeper toward getting a bet recommendation
+2. **Lateral** — offers an alternative path, but still within the funnel
+
+NEVER include backward actions, dead ends, or generic filler.
+NEVER include links to BwanaBet — they do not work inside the widget.
+
 Rules:
-- Actions MUST be relevant to what you just said — not generic
-- If you listed specific games/teams/options, the actions should match those exact items
+- Exactly 2 actions, no more, no less
+- Actions MUST be relevant to what you just said
 - If you asked a question with choices, the actions should BE those choices
-- One action should always drive toward placing a bet or playing a game
 - Keep action text short (2-5 words)
 - The message after | is what gets sent as the user's next message
 
-Examples:
+## ACTIONS BY FUNNEL STAGE
 
-After listing casino games (Aviator, Blackjack, Roulette):
+Greeting / onboarding:
 [ACTIONS]
-Teach me Aviator | Teach me how to play and win at Aviator
-Teach me Blackjack | Teach me how to play and win at Blackjack
-Try Roulette | Teach me how to play and win at Roulette
-Sports betting instead | Show me sports betting picks
+Sports Betting | I want to try sports betting
+Casino Games | Show me casino games
 [/ACTIONS]
 
-After giving a match pick (Liverpool vs Arsenal, BTTS):
+After showing match list:
 [ACTIONS]
-How do I place this? | Show me step by step how to place this bet
+Pick me a bet | Pick me the best bet from these matches
+Different league | Show me matches from a different league
+[/ACTIONS]
+
+After showing team stats:
+[ACTIONS]
+Give me a pick | Give me a betting pick based on this
+Compare another team | Compare with another team
+[/ACTIONS]
+
+After showing standings:
+[ACTIONS]
+Pick a match to bet | Pick a match from this league for me to bet on
+Different league | Show me standings for a different league
+[/ACTIONS]
+
+After giving a single pick:
+[ACTIONS]
+Build accumulator | Check today's other matches and build me an accumulator
 Different pick | Show me a different betting pick
-More about this match | Tell me more about Liverpool vs Arsenal
-Play casino | Show me casino games
 [/ACTIONS]
 
-After asking "Simple or In-Depth?":
+After showing accumulator/betslip:
 [ACTIONS]
-Keep it simple | Keep it simple for me
-In-depth analysis | Give me in-depth analysis
+Explain these picks | Explain the reasoning behind each pick in more detail
+Start fresh | Clear my betslip and show me today's matches
 [/ACTIONS]
 
-After showing EPL standings:
+After placement instructions:
 [ACTIONS]
-Pick a match to bet | Pick a match from EPL for me to bet on
-Different league | Show me La Liga standings
-Team stats | Show me stats for a specific team
-Play casino | Show me casino games
+More picks | Give me some more betting picks
+Build accumulator | Build me an accumulator for today
 [/ACTIONS]
 
-CRITICAL: Actions must match YOUR response content. If you asked about Aviator specifically, don't suggest "Teach me Blackjack" as the first action.
+After casino game recommendation:
+[ACTIONS]
+How do I play this? | Explain how to play this game and give me a winning strategy
+Show another game | Recommend a different casino game
+[/ACTIONS]
+
+After casino game explanation:
+[ACTIONS]
+Show another game | Recommend a different casino game
+Try sports betting | Show me sports betting picks
+[/ACTIONS]
+
+After educational explanation:
+[ACTIONS]
+Show me picks | Now show me some betting picks
+Explain more | Explain this in more detail
+[/ACTIONS]
+
+CRITICAL: Actions must match YOUR response content. Pick the stage that best matches what you just said.
 
 ###############################################################################
 ##  FINAL CHECK BEFORE EVERY RESPONSE                                       ##
@@ -1703,7 +1743,7 @@ CRITICAL: Actions must match YOUR response content. If you asked about Aviator s
 [ ] After single pick: accumulator suggestion included in [ACTIONS]
 [ ] When asked for accumulator/best bets: fetched fixtures first, ran form for candidates
 [ ] Accumulator has 2-4 legs, each passing bet type validation rules
-[ ] [ACTIONS] block at the end with 3-4 relevant quick actions
+[ ] [ACTIONS] block at the end with exactly 2 relevant quick actions (forward + lateral)
 
 ###############################################################################
 ##  FIXTURE DISPLAY RULES                                                    ##
@@ -2247,12 +2287,11 @@ Ready to go?
 
 ## ACCUMULATOR SUGGESTION
 
-After giving any single-match pick, ALWAYS include this as one of the
-[ACTIONS] quick buttons:
+After giving any single-match pick, use the single-pick [ACTIONS] format:
 
 [ACTIONS]
-...existing actions...
 Build accumulator | Check today's other matches and build me an accumulator
+Different pick | Show me a different betting pick
 [/ACTIONS]
 
 Also add a natural prompt after the pick reasoning:
@@ -2896,7 +2935,7 @@ export default async function handler(req, res) {
           const [text, query] = line.split('|').map(s => s.trim());
           return { text, q: query };
         })
-        .slice(0, 4);
+        .slice(0, 2);
     }
 
     // Validate numbers in response against tool data (fire-and-forget)
