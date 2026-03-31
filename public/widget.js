@@ -344,7 +344,8 @@
     .be-messages::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 2px; }
 
     .be-scroll-down {
-      position: absolute; bottom: 110px; right: 18px;
+      position: absolute; bottom: 110px; left: 50%;
+      transform: translateX(-50%);
       width: 34px; height: 34px;
       border-radius: 50%; border: none;
       background: #f59e0b; color: #0f172a;
@@ -490,6 +491,7 @@
       }
       .be-h-user { display: none !important; }
       .be-h-dot { display: none !important; }
+      .be-scroll-down { bottom: 100px; }
     }
   `;
 
@@ -928,7 +930,20 @@
     el.className = 'be-msg be-msg-bot';
     el.innerHTML = renderMd(text);
     messagesEl.appendChild(el);
-    scrollDown();
+    // Scroll so the top of the new message is visible with ~20% showing,
+    // giving the user a peek and encouraging them to scroll for the rest.
+    // For short messages, just show the whole thing.
+    requestAnimationFrame(() => {
+      const msgTop = el.offsetTop;
+      const containerH = messagesEl.clientHeight;
+      if (el.offsetHeight > containerH * 0.5) {
+        messagesEl.scrollTo({ top: msgTop - 10, behavior: 'smooth' });
+        // Show scroll-down arrow since there's more content below
+        shadow.getElementById('beScrollDown')?.classList.add('be-visible');
+      } else {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+    });
   }
 
   function showTyping() {
