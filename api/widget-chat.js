@@ -2857,17 +2857,19 @@ export default async function handler(req, res) {
 
       if (!response.ok) {
         const errMsg = data.error?.message || 'API error';
-        console.error('[widget] OpenAI error:', response.status, errMsg);
+        const errType = data.error?.type || 'unknown';
+        const errCode = data.error?.code || '';
+        console.error(`[widget] OpenAI error: ${response.status} ${errType} ${errCode} ${errMsg}`);
         supabaseInsert('monitor_errors', {
           session_id: sessionId, source: 'api',
           error_message: `Widget: ${errMsg}`, severity: 'high',
-          context: { endpoint: 'widget-chat', loop: loopCount, status: response.status },
+          context: { endpoint: 'widget-chat', loop: loopCount, status: response.status, type: errType, code: errCode },
         });
         slackAlert(response.status >= 500 ? 'critical' : 'high', `OpenAI API ${response.status}`, {
-          message: `${errMsg}\n\n*User said:* ${userContentShort}`,
+          message: `${errType}: ${errMsg}\n\n*User said:* ${userContentShort}`,
           sessionId, endpoint: 'widget-chat',
         });
-        return res.status(502).json({ error: 'Service temporarily unavailable' });
+        return res.status(502).json({ error: 'Service temporarily unavailable', debug: `${response.status} ${errType}: ${errMsg}` });
       }
 
       totalInputTokens += data.usage?.prompt_tokens || 0;
