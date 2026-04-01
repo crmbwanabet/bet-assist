@@ -2542,11 +2542,26 @@ function estimateCost(inp, out) {
 
 // ============================================
 // SLACK NOTIFICATIONS (inline, no imports)
+// Dedup: same alert title suppressed for 5 minutes
 // ============================================
+const slackAlertHistory = new Map(); // title → timestamp
+const SLACK_DEDUP_MS = 5 * 60 * 1000; // 5 minutes
 
 async function slackAlert(severity, title, details = {}) {
   const url = process.env.SLACK_WEBHOOK_URL;
   if (!url) return;
+
+  // Dedup: skip if same title was sent within the window
+  const now = Date.now();
+  const lastSent = slackAlertHistory.get(title);
+  if (lastSent && (now - lastSent) < SLACK_DEDUP_MS) return;
+  slackAlertHistory.set(title, now);
+  // Prune old entries to prevent memory leak
+  if (slackAlertHistory.size > 50) {
+    for (const [key, ts] of slackAlertHistory) {
+      if (now - ts > SLACK_DEDUP_MS) slackAlertHistory.delete(key);
+    }
+  }
 
   const emojis = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵' };
   const emoji = emojis[severity] || '🔵';
@@ -2653,14 +2668,14 @@ async function checkRateLimit(sessionId) {
 // RESPONSE VALIDATION — detect hallucinated numbers
 // ============================================
 function validateResponseNumbers(finalText, toolResultsLog, sessionId) {
-  if (!finalText || !toolResultsLog?.length) return;
+  if (!finalText || !toolResultsLog?.length) return false;
 
   // Extract numbers from response (skip very small numbers like positions 1-3, ZMW amounts)
   const numbersInResponse = [...finalText.matchAll(/\b(\d{2,}\.?\d*)\b/g)]
     .map(m => m[1])
     .filter(n => parseFloat(n) > 3);
 
-  if (!numbersInResponse.length) return;
+  if (!numbersInResponse.length) return false;
 
   // Flatten all tool results to a single searchable string
   const toolData = JSON.stringify(toolResultsLog);
@@ -2670,39 +2685,52 @@ function validateResponseNumbers(finalText, toolResultsLog, sessionId) {
   // If more than 4 numbers appear in response but not in any tool result, flag it
   if (suspicious.length > 4) {
     console.warn('[widget] Possible hallucinated stats detected:', suspicious);
-    slackAlert('medium', 'Possible hallucinated stats in response', {
+    slackAlert('medium', 'Possible hallucinated stats', {
       message: `${suspicious.length} numbers not found in tool data: ${suspicious.slice(0, 8).join(', ')}`,
       sessionId,
       endpoint: 'widget-chat',
     }).catch(() => {});
+    return true;
   }
+  return false;
 }
 
 // ============================================
 // HOT GAMES — fetch and inject into system prompt
+// TTL-based cache: survives across warm invocations,
+// refetches after 6 hours or on date change.
 // ============================================
 let hotGamesCache = null;
 let hotGamesCacheDate = null;
+let hotGamesCacheTs = 0;
+const HOT_GAMES_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 async function fetchHotGames() {
+  const now = Date.now();
   const today = new Date().toISOString().split('T')[0];
-  if (hotGamesCache && hotGamesCacheDate === today) return hotGamesCache;
+  // Serve from cache if same day AND within TTL
+  if (hotGamesCache && hotGamesCacheDate === today && (now - hotGamesCacheTs) < HOT_GAMES_TTL_MS) {
+    return hotGamesCache;
+  }
 
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) return null;
+  if (!url || !key) return hotGamesCache; // return stale cache if available
 
   try {
     const resp = await fetch(
       `${url}/rest/v1/hot_games?active=eq.true&select=name,category,rtp,description,bwanabet_url&order=weight.desc&limit=25`,
       { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
     );
-    if (!resp.ok) return null;
+    if (!resp.ok) return hotGamesCache; // stale cache on failure
     const games = await resp.json();
     hotGamesCache = games;
     hotGamesCacheDate = today;
+    hotGamesCacheTs = now;
     return games;
-  } catch (e) { return null; }
+  } catch (e) {
+    return hotGamesCache; // stale cache on error
+  }
 }
 
 function buildHotGamesPrompt(games) {
@@ -2884,42 +2912,6 @@ export default async function handler(req, res) {
     const userMsg = messages.filter(m => m.role === 'user').pop();
     const userContent = (typeof userMsg?.content === 'string' ? userMsg.content : '').slice(0, 2000);
 
-    Promise.all([
-      supabaseInsert('monitor_requests', {
-        session_id: sessionId, model,
-        input_tokens: totalInputTokens, output_tokens: totalOutputTokens, cost_usd: costUsd,
-        duration_ms: durationMs, stop_reason: 'end_turn',
-        tools_called: allToolsCalled, tool_count: allToolsCalled.length,
-        status: durationMs > 30000 ? 'timeout' : 'success',
-      }),
-      supabaseInsert('monitor_messages', {
-        session_id: sessionId, role: 'user', content: userContent, tokens_used: totalInputTokens,
-      }),
-      supabaseInsert('monitor_messages', {
-        session_id: sessionId, role: 'assistant', content: finalText.slice(0, 2000), tokens_used: totalOutputTokens,
-      }),
-      ...allToolsCalled.map(name => supabaseInsert('monitor_messages', {
-        session_id: sessionId, role: 'tool_call', tool_name: name, content: `Tool: ${name}`,
-      })),
-      durationMs > 10000 ? supabaseInsert('monitor_errors', {
-        session_id: sessionId, source: 'api',
-        error_message: `Widget slow: ${durationMs}ms (${allToolsCalled.length} tools)`,
-        severity: durationMs > 20000 ? 'high' : 'medium',
-        context: { duration_ms: durationMs, tools: allToolsCalled, loops: loopCount },
-      }) : Promise.resolve(),
-      // Slack alert for very slow requests (>20s)
-      durationMs > 20000 ? slackAlert('medium', `Slow request: ${(durationMs/1000).toFixed(1)}s`, {
-        duration: `${(durationMs/1000).toFixed(1)}s`,
-        message: `Tools: ${allToolsCalled.join(', ') || 'none'} | Loops: ${loopCount}`,
-        sessionId, endpoint: 'widget-chat',
-      }) : Promise.resolve(),
-    ]).catch(() => {});
-
-    // Check error rate + cost thresholds (fire-and-forget)
-    checkAlertThresholds(sessionId, costUsd).catch(() => {});
-
-    console.log(`[widget] Done in ${durationMs}ms, ${loopCount} loops, ${allToolsCalled.length} tools, $${costUsd.toFixed(4)}`);
-
     // Parse [ACTIONS] block from Claude's response
     let actions = null;
     let cleanText = finalText;
@@ -2938,8 +2930,60 @@ export default async function handler(req, res) {
         .slice(0, 2);
     }
 
-    // Validate numbers in response against tool data (fire-and-forget)
-    validateResponseNumbers(finalText, toolResultsLog, sessionId);
+    // ── Quality metrics ────────────────────────────────────────────
+    const isFirstMessage = messages.filter(m => m.role === 'user').length <= 1;
+    const isTruncated = finalText.length > 0 && !finalText.includes('[/ACTIONS]')
+      && totalOutputTokens >= MAX_TOKENS - 10;
+    const hasActions = actions && actions.length > 0;
+    const hallucinationFlag = validateResponseNumbers(finalText, toolResultsLog, sessionId);
+
+    const qualitySignals = {
+      is_first_message: isFirstMessage,
+      truncated: isTruncated,
+      has_actions: hasActions,
+      actions_count: actions?.length || 0,
+      hallucination_flagged: hallucinationFlag,
+      response_length: cleanText.length,
+      loops: loopCount,
+    };
+
+    Promise.all([
+      supabaseInsert('monitor_requests', {
+        session_id: sessionId, model,
+        input_tokens: totalInputTokens, output_tokens: totalOutputTokens, cost_usd: costUsd,
+        duration_ms: durationMs, stop_reason: 'end_turn',
+        tools_called: allToolsCalled, tool_count: allToolsCalled.length,
+        status: durationMs > 30000 ? 'timeout' : 'success',
+        quality: qualitySignals,
+      }),
+      supabaseInsert('monitor_messages', {
+        session_id: sessionId, role: 'user', content: userContent, tokens_used: totalInputTokens,
+      }),
+      supabaseInsert('monitor_messages', {
+        session_id: sessionId, role: 'assistant', content: finalText.slice(0, 2000), tokens_used: totalOutputTokens,
+      }),
+      ...allToolsCalled.map(name => supabaseInsert('monitor_messages', {
+        session_id: sessionId, role: 'tool_call', tool_name: name, content: `Tool: ${name}`,
+      })),
+      durationMs > 10000 ? supabaseInsert('monitor_errors', {
+        session_id: sessionId, source: 'api',
+        error_message: `Widget slow: ${durationMs}ms (${allToolsCalled.length} tools)`,
+        severity: durationMs > 20000 ? 'high' : 'medium',
+        context: { duration_ms: durationMs, tools: allToolsCalled, loops: loopCount },
+      }) : Promise.resolve(),
+      // Slack alert for very slow requests (>20s)
+      durationMs > 20000 ? slackAlert('medium', 'Slow widget request', {
+        duration: `${(durationMs/1000).toFixed(1)}s`,
+        message: `Tools: ${allToolsCalled.join(', ') || 'none'} | Loops: ${loopCount}`,
+        sessionId, endpoint: 'widget-chat',
+      }) : Promise.resolve(),
+    ]).catch(() => {});
+
+    // Check error rate + cost thresholds (fire-and-forget)
+    checkAlertThresholds(sessionId, costUsd).catch(() => {});
+
+    console.log(`[widget] Done in ${durationMs}ms, ${loopCount} loops, ${allToolsCalled.length} tools, $${costUsd.toFixed(4)}` +
+      (isTruncated ? ' [TRUNCATED]' : '') + (!hasActions ? ' [NO_ACTIONS]' : ''));
 
     return res.status(200).json({
       text: cleanText,
