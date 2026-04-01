@@ -476,6 +476,8 @@
         bottom: ${OFFSET_BOTTOM}px;
         right: ${OFFSET_RIGHT}px;
       }
+      /* Hide the floating button when panel is open — header ✕ is the close action */
+      .be-btn.be-open { display: none !important; }
       .be-panel {
         width: 100vw;
         height: 65dvh;
@@ -488,6 +490,22 @@
       .be-panel.be-visible {
         transform: translateY(0);
         opacity: 1;
+      }
+      /* Larger fonts for mobile readability (1.5x) */
+      .be-msg { font-size: 22px; }
+      .be-input { font-size: 24px; }
+      .be-act { font-size: 20px; }
+      .be-h-title { font-size: 22px; }
+      .be-h-sub { font-size: 18px; }
+      .be-typing-text { font-size: 18px; }
+      .be-footer-link { font-size: 18px; }
+      /* Bigger tap target for header close button */
+      .be-h-dismiss {
+        min-width: 44px; min-height: 44px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 27px;
+        padding: 8px 12px;
+        border-radius: 10px;
       }
       .be-h-user { display: none !important; }
       .be-h-dot { display: none !important; }
