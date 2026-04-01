@@ -2627,23 +2627,6 @@ async function checkAlertThresholds(sessionId, costUsd) {
       }
     }
 
-    // Check daily cost
-    const todayStart = new Date().toISOString().split('T')[0] + 'T00:00:00Z';
-    const costResp = await fetch(
-      `${sbUrl}/rest/v1/monitor_requests?select=cost_usd&created_at=gte.${todayStart}`,
-      { headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}` } }
-    );
-    if (costResp.ok) {
-      const costRows = await costResp.json();
-      const totalToday = costRows.reduce((sum, r) => sum + parseFloat(r.cost_usd || 0), 0);
-      const limit = parseFloat(process.env.DAILY_COST_LIMIT || '50');
-      if (totalToday > limit) {
-        await slackAlert('high', 'Daily cost limit exceeded', {
-          message: `Today's cost: $${totalToday.toFixed(2)} (limit: $${limit})`,
-          cost: `$${totalToday.toFixed(2)} / $${limit}`,
-        });
-      }
-    }
   } catch (e) { /* threshold checks are best-effort */ }
 }
 
@@ -2970,12 +2953,6 @@ export default async function handler(req, res) {
         error_message: `Widget slow: ${durationMs}ms (${allToolsCalled.length} tools)`,
         severity: durationMs > 20000 ? 'high' : 'medium',
         context: { duration_ms: durationMs, tools: allToolsCalled, loops: loopCount },
-      }) : Promise.resolve(),
-      // Slack alert for very slow requests (>20s)
-      durationMs > 20000 ? slackAlert('medium', 'Slow widget request', {
-        duration: `${(durationMs/1000).toFixed(1)}s`,
-        message: `Tools: ${allToolsCalled.join(', ') || 'none'} | Loops: ${loopCount}`,
-        sessionId, endpoint: 'widget-chat',
       }) : Promise.resolve(),
     ]).catch(() => {});
 
