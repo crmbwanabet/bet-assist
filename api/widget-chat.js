@@ -2653,8 +2653,13 @@ async function checkRateLimit(sessionId) {
 // ============================================
 // RESPONSE VALIDATION — detect hallucinated numbers
 // ============================================
-function validateResponseNumbers(finalText, toolResultsLog, sessionId) {
+function validateResponseNumbers(finalText, toolResultsLog, allToolsCalled, sessionId) {
   if (!finalText || !toolResultsLog?.length) return false;
+
+  // Skip validation when web_search was used — Claude synthesizes/calculates
+  // numbers from web text (e.g. "4W from 9 games" → "44.44%"), so exact
+  // number matching produces false positives
+  if (allToolsCalled?.includes('web_search')) return false;
 
   // Extract numbers from response (skip very small numbers like positions 1-3, ZMW amounts)
   const numbersInResponse = [...finalText.matchAll(/\b(\d{2,}\.?\d*)\b/g)]
@@ -2925,7 +2930,7 @@ export default async function handler(req, res) {
     const isTruncated = finalText.length > 0 && !finalText.includes('[/ACTIONS]')
       && totalOutputTokens >= MAX_TOKENS - 10;
     const hasActions = actions && actions.length > 0;
-    const hallucinationFlag = validateResponseNumbers(finalText, toolResultsLog, sessionId);
+    const hallucinationFlag = validateResponseNumbers(finalText, toolResultsLog, allToolsCalled, sessionId);
 
     const qualitySignals = {
       is_first_message: isFirstMessage,
