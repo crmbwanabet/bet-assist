@@ -2686,7 +2686,7 @@ function validateResponseNumbers(finalText, toolResultsLog, sessionId) {
   if (suspicious.length > 4) {
     console.warn('[widget] Possible hallucinated stats detected:', suspicious);
     slackAlert('medium', 'Possible hallucinated stats', {
-      message: `${suspicious.length} numbers not found in tool data: ${suspicious.slice(0, 8).join(', ')}`,
+      message: `${suspicious.length} numbers not found in tool data: ${suspicious.slice(0, 8).join(', ')}\n\n*AI response (first 300):* ${finalText.slice(0, 300)}`,
       sessionId,
       endpoint: 'widget-chat',
     }).catch(() => {});
@@ -2801,6 +2801,11 @@ export default async function handler(req, res) {
   let allToolsCalled = [];
   let toolResultsLog = [];
 
+  // Extract user message early so it's available in all error paths
+  const lastUserMsg = messages.filter(m => m.role === 'user').pop();
+  const userContentFull = (typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : '').slice(0, 2000);
+  const userContentShort = userContentFull.slice(0, 300);
+
   try {
     // Fetch hot games and inject into system prompt
     const hotGames = await fetchHotGames();
@@ -2848,7 +2853,8 @@ export default async function handler(req, res) {
           context: { endpoint: 'widget-chat', loop: loopCount, status: response.status },
         });
         slackAlert(response.status >= 500 ? 'critical' : 'high', `Anthropic API ${response.status}`, {
-          message: errMsg, sessionId, endpoint: 'widget-chat',
+          message: `${errMsg}\n\n*User said:* ${userContentShort}`,
+          sessionId, endpoint: 'widget-chat',
         });
         return res.status(502).json({ error: 'Service temporarily unavailable' });
       }
@@ -2888,7 +2894,8 @@ export default async function handler(req, res) {
         } catch (e) {
           console.error(`[widget] Tool ${toolBlock.name} error:`, e.message);
           slackAlert('medium', `Tool failed: ${toolBlock.name}`, {
-            message: e.message, sessionId, endpoint: 'widget-chat',
+            message: `${e.message}\n\n*User said:* ${userContentShort}`,
+            sessionId, endpoint: 'widget-chat',
           });
           return {
             type: 'tool_result',
@@ -2908,9 +2915,6 @@ export default async function handler(req, res) {
 
     const durationMs = Date.now() - startTime;
     const costUsd = estimateCost(totalInputTokens, totalOutputTokens);
-
-    const userMsg = messages.filter(m => m.role === 'user').pop();
-    const userContent = (typeof userMsg?.content === 'string' ? userMsg.content : '').slice(0, 2000);
 
     // Parse [ACTIONS] block from Claude's response
     let actions = null;
@@ -2957,7 +2961,7 @@ export default async function handler(req, res) {
         quality: qualitySignals,
       }),
       supabaseInsert('monitor_messages', {
-        session_id: sessionId, role: 'user', content: userContent, tokens_used: totalInputTokens,
+        session_id: sessionId, role: 'user', content: userContentFull, tokens_used: totalInputTokens,
       }),
       supabaseInsert('monitor_messages', {
         session_id: sessionId, role: 'assistant', content: finalText.slice(0, 2000), tokens_used: totalOutputTokens,
@@ -2974,7 +2978,7 @@ export default async function handler(req, res) {
       // Slack alert for very slow requests (>20s)
       durationMs > 20000 ? slackAlert('medium', 'Slow widget request', {
         duration: `${(durationMs/1000).toFixed(1)}s`,
-        message: `Tools: ${allToolsCalled.join(', ') || 'none'} | Loops: ${loopCount}`,
+        message: `Tools: ${allToolsCalled.join(', ') || 'none'} | Loops: ${loopCount}\n\n*User said:* ${userContentShort}\n\n*AI responded:* ${cleanText.slice(0, 300)}`,
         sessionId, endpoint: 'widget-chat',
       }) : Promise.resolve(),
     ]).catch(() => {});
@@ -3000,7 +3004,8 @@ export default async function handler(req, res) {
       error_raw: error.stack?.slice(0, 3000), severity: 'critical',
     });
     slackAlert('critical', 'Widget exception', {
-      message: error.message, sessionId, endpoint: 'widget-chat',
+      message: `${error.message}\n\n*User said:* ${userContentShort}`,
+      sessionId, endpoint: 'widget-chat',
     });
     return res.status(500).json({ error: 'Service temporarily unavailable' });
   }
