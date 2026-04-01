@@ -2842,7 +2842,7 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           model,
-          max_tokens: MAX_TOKENS,
+          max_completion_tokens: MAX_TOKENS,
           messages: openaiMessages,
           tools: [
             ...TOOL_DEFINITIONS,
@@ -2881,7 +2881,7 @@ export default async function handler(req, res) {
       const toolCalls = message.tool_calls || [];
 
       // Check if model wants to call tools
-      if (choice.finish_reason !== 'tool_calls' || toolCalls.length === 0) {
+      if (toolCalls.length === 0) {
         finalText = message.content || '';
         break;
       }
