@@ -822,10 +822,13 @@ function manageBetslip(action, currentSlip, pickData = null, removeIndex = null)
   // currentSlip is passed in from Claude's conversation context as a JSON string
   let slip;
   try {
-    slip = currentSlip ? JSON.parse(currentSlip) : { picks: [] };
+    slip = currentSlip
+      ? (typeof currentSlip === 'string' ? JSON.parse(currentSlip) : currentSlip)
+      : { picks: [] };
   } catch (e) {
     slip = { picks: [] };
   }
+  if (!slip || !Array.isArray(slip.picks)) slip = { picks: [] };
 
   switch (action) {
 
