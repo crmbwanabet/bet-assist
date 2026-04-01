@@ -468,6 +468,9 @@
     }
     .be-footer-link:hover { color: #f5c518; }
 
+    /* Hide the floating button when panel is open — header ✕ is the close action */
+    .be-btn.be-open { display: none !important; }
+
     /* ---- MOBILE ---- */
     @media (max-width: 480px) {
       .be-widget { bottom: 0; right: 0; left: 0; }
@@ -476,8 +479,6 @@
         bottom: ${OFFSET_BOTTOM}px;
         right: ${OFFSET_RIGHT}px;
       }
-      /* Hide the floating button when panel is open — header ✕ is the close action */
-      .be-btn.be-open { display: none !important; }
       .be-panel {
         width: 100vw;
         height: 65dvh;
