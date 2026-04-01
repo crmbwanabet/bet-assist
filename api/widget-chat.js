@@ -2846,10 +2846,7 @@ export default async function handler(req, res) {
           model,
           max_completion_tokens: MAX_TOKENS,
           messages: openaiMessages,
-          tools: [
-            ...TOOL_DEFINITIONS,
-            { type: 'web_search_preview' },
-          ],
+          tools: TOOL_DEFINITIONS,
         }),
       });
 
