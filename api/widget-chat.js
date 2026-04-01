@@ -1042,53 +1042,53 @@ async function fetchFootballByTier(tier, daysAhead = 7) {
 }
 
 // ============================================
-// TOOL DEFINITIONS (for Claude API)
+// TOOL DEFINITIONS (OpenAI function calling format)
 // ============================================
 const TOOL_DEFINITIONS = [
-  {
+  { type: 'function', function: {
     name: 'get_games',
     description: 'Fetch live, upcoming, and completed games for a league over a date range. Default is 7 days ahead. Use days_ahead=30 for a full month of fixtures. Returns scores, teams, match times, and game IDs (use IDs with get_game_stats for detailed stats).',
-    input_schema: { type: 'object', properties: { league: { type: 'string', description: 'League name (e.g., "Premier League", "NBA", "La Liga", "Champions League", "UFC")' }, days_ahead: { type: 'number', description: 'Number of days ahead to fetch (1-30, default 7). Use 30 for a full month of fixtures.' } }, required: ['league'] },
-  },
-  {
+    parameters: { type: 'object', properties: { league: { type: 'string', description: 'League name (e.g., "Premier League", "NBA", "La Liga", "Champions League", "UFC")' }, days_ahead: { type: 'number', description: 'Number of days ahead to fetch (1-30, default 7). Use 30 for a full month of fixtures.' } }, required: ['league'] },
+  }},
+  { type: 'function', function: {
     name: 'get_standings',
     description: 'Fetch current league standings/table with team rankings, wins, losses, points.',
-    input_schema: { type: 'object', properties: { league: { type: 'string', description: 'League name' } }, required: ['league'] },
-  },
-  {
+    parameters: { type: 'object', properties: { league: { type: 'string', description: 'League name' } }, required: ['league'] },
+  }},
+  { type: 'function', function: {
     name: 'get_game_stats',
     description: 'Get detailed match statistics: possession, shots, corners, cards, key events (goals), lineups. Requires a game_id from get_games.',
-    input_schema: { type: 'object', properties: { league: { type: 'string' }, game_id: { type: 'string', description: 'Game ID from get_games results' } }, required: ['league', 'game_id'] },
-  },
-  {
+    parameters: { type: 'object', properties: { league: { type: 'string' }, game_id: { type: 'string', description: 'Game ID from get_games results' } }, required: ['league', 'game_id'] },
+  }},
+  { type: 'function', function: {
     name: 'search_team',
     description: 'Search for a team by name across major leagues worldwide.',
-    input_schema: { type: 'object', properties: { team_name: { type: 'string' } }, required: ['team_name'] },
-  },
-  {
+    parameters: { type: 'object', properties: { team_name: { type: 'string' } }, required: ['team_name'] },
+  }},
+  { type: 'function', function: {
     name: 'get_team_stats',
     description: 'Get detailed statistics for a team: record, win percentage, standings.',
-    input_schema: { type: 'object', properties: { team_name: { type: 'string' }, league: { type: 'string', description: 'Optional: specify league if ambiguous' } }, required: ['team_name'] },
-  },
-  {
+    parameters: { type: 'object', properties: { team_name: { type: 'string' }, league: { type: 'string', description: 'Optional: specify league if ambiguous' } }, required: ['team_name'] },
+  }},
+  { type: 'function', function: {
     name: 'get_head_to_head',
     description: 'Compare two teams — shows records and win percentages for both.',
-    input_schema: { type: 'object', properties: { team1: { type: 'string' }, team2: { type: 'string' }, league: { type: 'string' } }, required: ['team1', 'team2'] },
-  },
-  {
+    parameters: { type: 'object', properties: { team1: { type: 'string' }, team2: { type: 'string' }, league: { type: 'string' } }, required: ['team1', 'team2'] },
+  }},
+  { type: 'function', function: {
     name: 'list_leagues',
     description: 'List all available sports and leagues. Use when users ask what sports are available.',
-    input_schema: { type: 'object', properties: { sport: { type: 'string', description: 'Optional: filter by sport' } }, required: [] },
-  },
-  {
+    parameters: { type: 'object', properties: { sport: { type: 'string', description: 'Optional: filter by sport' } }, required: [] },
+  }},
+  { type: 'function', function: {
     name: 'calculate_bet_payout',
     description: 'Calculate potential payout for a bet given odds and stake.',
-    input_schema: { type: 'object', properties: { odds: { type: 'number' }, stake: { type: 'number' } }, required: ['odds', 'stake'] },
-  },
-  {
+    parameters: { type: 'object', properties: { odds: { type: 'number' }, stake: { type: 'number' } }, required: ['odds', 'stake'] },
+  }},
+  { type: 'function', function: {
     name: 'get_football_by_tier',
     description: 'Fetch football/soccer matches from a specific tier or ALL leagues at once. Use tier "all" when user asks broadly about football matches (e.g., "what matches are on today?") to scan all 53 leagues in parallel. Tier 1: Major European (EPL, La Liga, Bundesliga, Serie A, Ligue 1, UCL, UEL). Tier 2: Secondary European (Eredivisie, Primeira Liga, Belgian, Scottish, Turkish, Greek, Swiss, Austrian, Danish, Swedish, Norwegian, Czech, Russian, Cypriot, Israeli, Conference League, Championship). Tier 3: Domestic cups & Americas (FA Cup, Copa del Rey, DFB Pokal, MLS, Liga MX, Brasileirão, Colombian, Chilean, Uruguayan, Peruvian, Copa Libertadores). Tier 4: Africa, Asia & Oceania (Saudi Pro League, J1 League, A-League, Chinese, Indonesian, Thai, Indian Super League, PSL South Africa, Egyptian, Zambian Super League, Kenyan, Nigerian, Ghanaian, Ugandan, AFCON). Also use this tool as the first step when building an accumulator — fetch tier3 for South American leagues and tier1 for European leagues to get today\'s candidates.',
-    input_schema: {
+    parameters: {
       type: 'object',
       properties: {
         tier: { type: 'string', description: 'Which tier to fetch: "all" (recommended for broad queries), "tier1", "tier2", "tier3", or "tier4"' },
@@ -1096,11 +1096,11 @@ const TOOL_DEFINITIONS = [
       },
       required: ['tier'],
     },
-  },
-  {
+  }},
+  { type: 'function', function: {
     name: 'verify_team_stats',
     description: 'Verify specific stats claimed by a user against live data. ALWAYS use this when a user pastes, states, or quotes specific statistics about a team — position, record, points, goals, form, streaks. Never accept user-provided stats as fact without running this tool first.',
-    input_schema: {
+    parameters: {
       type: 'object',
       properties: {
         team_name: { type: 'string', description: 'The team name to verify stats for' },
@@ -1109,43 +1109,28 @@ const TOOL_DEFINITIONS = [
       },
       required: ['team_name', 'league'],
     },
-  },
-  {
+  }},
+  { type: 'function', function: {
     name: 'get_team_form',
     description: 'Fetch recent match results and form for a specific team. Returns last 5 matches with scores, results (W/D/L), BTTS count, Over 2.5 count, clean sheets, and goals scored/conceded. REQUIRED before making any betting pick — never suggest a pick without calling this for both teams first.',
-    input_schema: {
+    parameters: {
       type: 'object',
       properties: {
-        team_name: {
-          type: 'string',
-          description: 'Full team name e.g. "Deportivo Pereira", "Liverpool"'
-        },
-        league: {
-          type: 'string',
-          description: 'League name to narrow the search e.g. "Colombian Primera A", "Premier League"'
-        },
-        match_count: {
-          type: 'number',
-          description: 'Number of recent matches to fetch (default 10, max 10)'
-        },
+        team_name: { type: 'string', description: 'Full team name e.g. "Deportivo Pereira", "Liverpool"' },
+        league: { type: 'string', description: 'League name to narrow the search e.g. "Colombian Primera A", "Premier League"' },
+        match_count: { type: 'number', description: 'Number of recent matches to fetch (default 10, max 10)' },
       },
       required: ['team_name'],
     },
-  },
-  {
+  }},
+  { type: 'function', function: {
     name: 'manage_betslip',
     description: 'Add, remove, view, or clear picks on the user\'s session betslip. The betslip persists across conversation turns. ALWAYS call get_team_form for both teams BEFORE calling manage_betslip with action="add". Pass the current slip JSON from conversation context as current_slip.',
-    input_schema: {
+    parameters: {
       type: 'object',
       properties: {
-        action: {
-          type: 'string',
-          description: 'One of: "add", "remove", "view", "clear"',
-        },
-        current_slip: {
-          type: 'string',
-          description: 'Current betslip as JSON string from conversation context. Pass empty string if no slip exists yet.',
-        },
+        action: { type: 'string', description: 'One of: "add", "remove", "view", "clear"' },
+        current_slip: { type: 'string', description: 'Current betslip as JSON string from conversation context. Pass empty string if no slip exists yet.' },
         pick_data: {
           type: 'object',
           description: 'Required for action="add". Contains match, homeTeam, awayTeam, betType, confidence, basis, missingData.',
@@ -1159,15 +1144,73 @@ const TOOL_DEFINITIONS = [
             missingData: { type: 'string', description: 'What data was unavailable, or null if complete' },
           },
         },
-        remove_index: {
-          type: 'number',
-          description: 'Required for action="remove". 0-based index of pick to remove.',
-        },
+        remove_index: { type: 'number', description: 'Required for action="remove". 0-based index of pick to remove.' },
       },
       required: ['action', 'current_slip'],
     },
-  },
+  }},
+  { type: 'function', function: {
+    name: 'web_search',
+    description: 'Search the live internet for information ESPN tools cannot provide: injury news, team news, transfer updates, form data for teams where get_team_form returned dataAvailable:false, and leagues not covered by ESPN. NEVER use for betting odds. NEVER use when ESPN tools already provide the answer.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The search query. Be specific, e.g. "Deportivo Pereira recent results 2026" or "Arsenal injuries April 2026"' },
+      },
+      required: ['query'],
+    },
+  }},
 ];
+
+// ============================================
+// WEB SEARCH via Claude API (hybrid approach)
+// GPT-4.1 mini handles conversation + ESPN tools,
+// Claude handles web search only when needed.
+// ============================================
+async function executeWebSearch(query) {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicKey) {
+    return { error: 'Web search unavailable (ANTHROPIC_API_KEY not set)', query };
+  }
+
+  console.log(`[widget] Web search via Claude: "${query}"`);
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': anthropicKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: `Search the web for: ${query}\n\nReturn only the factual results — match scores, team form, injury news, etc. Be concise and structured.` }],
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('[widget] Claude web search error:', data.error?.message);
+      return { error: `Web search failed: ${data.error?.message}`, query };
+    }
+
+    // Extract text from Claude's response (it processes web results and summarizes)
+    const textBlocks = (data.content || []).filter(b => b.type === 'text');
+    const resultText = textBlocks.map(b => b.text).join('\n');
+
+    return {
+      query,
+      results: resultText || 'No results found',
+      source: 'web_search_via_claude',
+      tokens_used: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
+    };
+  } catch (e) {
+    console.error('[widget] Web search exception:', e.message);
+    return { error: `Web search failed: ${e.message}`, query };
+  }
+}
 
 // ============================================
 // TOOL EXECUTOR
@@ -1185,6 +1228,7 @@ async function executeTool(name, input) {
     case 'get_football_by_tier': return await fetchFootballByTier(input.tier, input.days_ahead);
     case 'verify_team_stats': return await verifyTeamStats(input.team_name, input.league, input.claimed_stats);
     case 'get_team_form': return await fetchTeamForm(input.team_name, input.league, input.match_count || 10);
+    case 'web_search': return await executeWebSearch(input.query);
     case 'manage_betslip': return manageBetslip(
       input.action,
       input.current_slip,
@@ -2540,7 +2584,9 @@ async function supabaseInsert(table, data) {
 }
 
 function estimateCost(inp, out) {
-  return ((inp / 1e6) * 3.0) + ((out / 1e6) * 15.0);
+  // GPT-4.1 mini pricing: $0.40/1M input, $1.60/1M output
+  // (Claude web search costs tracked separately in executeWebSearch)
+  return ((inp / 1e6) * 0.4) + ((out / 1e6) * 1.6);
 }
 
 // ============================================
@@ -2760,6 +2806,7 @@ export default async function handler(req, res) {
   const origin = req.headers.origin || '';
   const allowed = ['https://bwanabet.com', 'https://www.bwanabet.com', 'https://bet-assist.vercel.app'];
   if (process.env.WIDGET_DEV === 'true') allowed.push('http://localhost:3000');
+  if (origin.endsWith('-bwanabetcrms-projects.vercel.app')) allowed.push(origin);
   res.setHeader('Access-Control-Allow-Origin', allowed.includes(origin) ? origin : allowed[0]);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -2768,9 +2815,9 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    slackAlert('critical', 'API key missing', { message: 'ANTHROPIC_API_KEY not set in Vercel env vars', endpoint: 'widget-chat' });
+    slackAlert('critical', 'API key missing', { message: 'OPENAI_API_KEY not set in Vercel env vars', endpoint: 'widget-chat' });
     return res.status(500).json({ error: 'Service temporarily unavailable' });
   }
 
@@ -2786,7 +2833,7 @@ export default async function handler(req, res) {
   }
 
   let conversationMessages = messages.slice(-20);
-  const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+  const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let allToolsCalled = [];
@@ -2807,29 +2854,30 @@ export default async function handler(req, res) {
     const dateInjection = `\n\n## CURRENT DATE\nToday is ${currentDate} (Zambia time). Use this to determine the active season for all leagues.\n`;
     const enhancedPrompt = SYSTEM_PROMPT + dateInjection + buildHotGamesPrompt(hotGames);
 
+    // Build OpenAI messages with system prompt
+    const openaiMessages = [
+      { role: 'system', content: enhancedPrompt },
+      ...conversationMessages,
+    ];
+
     let loopCount = 0;
     let finalText = '';
 
     while (loopCount < MAX_TOOL_LOOPS) {
       loopCount++;
-      console.log(`[widget] Loop ${loopCount}, messages: ${conversationMessages.length}`);
+      console.log(`[widget] Loop ${loopCount}, messages: ${openaiMessages.length}`);
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
+          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           model,
-          max_tokens: MAX_TOKENS,
-          system: enhancedPrompt,
-          messages: conversationMessages,
-          tools: [
-            ...TOOL_DEFINITIONS,
-            { type: 'web_search_20250305', name: 'web_search', max_uses: 3 },
-          ],
+          max_completion_tokens: MAX_TOKENS,
+          messages: openaiMessages,
+          tools: TOOL_DEFINITIONS,
         }),
       });
 
@@ -2837,67 +2885,72 @@ export default async function handler(req, res) {
 
       if (!response.ok) {
         const errMsg = data.error?.message || 'API error';
-        console.error('[widget] Anthropic error:', response.status, errMsg);
+        const errType = data.error?.type || 'unknown';
+        console.error(`[widget] OpenAI error: ${response.status} ${errType} ${errMsg}`);
         supabaseInsert('monitor_errors', {
           session_id: sessionId, source: 'api',
           error_message: `Widget: ${errMsg}`, severity: 'high',
-          context: { endpoint: 'widget-chat', loop: loopCount, status: response.status },
+          context: { endpoint: 'widget-chat', loop: loopCount, status: response.status, type: errType },
         });
-        slackAlert(response.status >= 500 ? 'critical' : 'high', `Anthropic API ${response.status}`, {
-          message: `${errMsg}\n\n*User said:* ${userContentShort}`,
+        slackAlert(response.status >= 500 ? 'critical' : 'high', `OpenAI API ${response.status}`, {
+          message: `${errType}: ${errMsg}\n\n*User said:* ${userContentShort}`,
           sessionId, endpoint: 'widget-chat',
         });
         return res.status(502).json({ error: 'Service temporarily unavailable' });
       }
 
-      totalInputTokens += data.usage?.input_tokens || 0;
-      totalOutputTokens += data.usage?.output_tokens || 0;
+      totalInputTokens += data.usage?.prompt_tokens || 0;
+      totalOutputTokens += data.usage?.completion_tokens || 0;
 
-      const textBlocks = (data.content || []).filter(b => b.type === 'text');
-      // Custom tools need local execution; server tools (web_search) are already resolved inline
-      const customToolBlocks = (data.content || []).filter(b => b.type === 'tool_use');
-      const serverToolBlocks = (data.content || []).filter(b => b.type === 'server_tool_use');
-
-      // Track server tool usage (web_search etc.)
-      serverToolBlocks.forEach(b => allToolsCalled.push(b.name));
-
-      if (data.stop_reason !== 'tool_use' || customToolBlocks.length === 0) {
-        finalText = textBlocks.map(b => b.text).join('\n');
+      const choice = data.choices?.[0];
+      if (!choice) {
+        finalText = "Sorry, I couldn't generate a response. Please try again.";
         break;
       }
 
-      console.log(`[widget] Executing ${customToolBlocks.length} custom tools:`, customToolBlocks.map(t => t.name).join(', '));
-      if (serverToolBlocks.length > 0) {
-        console.log(`[widget] Server tools resolved: ${serverToolBlocks.map(t => t.name).join(', ')}`);
+      const message = choice.message;
+      const toolCalls = message.tool_calls || [];
+
+      // No tool calls — we have the final response
+      if (toolCalls.length === 0) {
+        finalText = message.content || '';
+        break;
       }
 
-      const toolResults = await Promise.all(customToolBlocks.map(async (toolBlock) => {
-        allToolsCalled.push(toolBlock.name);
+      console.log(`[widget] Executing ${toolCalls.length} tools:`, toolCalls.map(t => t.function?.name).join(', '));
+
+      // Add assistant message with tool calls to conversation
+      openaiMessages.push(message);
+
+      // Execute each tool call and add results
+      for (const toolCall of toolCalls) {
+        const funcName = toolCall.function?.name;
+        const funcArgs = toolCall.function?.arguments;
+        if (!funcName) continue;
+
+        allToolsCalled.push(funcName);
+        let resultContent;
         try {
-          const result = await executeTool(toolBlock.name, toolBlock.input);
+          const input = JSON.parse(funcArgs || '{}');
+          const result = await executeTool(funcName, input);
           toolResultsLog.push(result);
           const truncated = truncateResult(result);
-          return {
-            type: 'tool_result',
-            tool_use_id: toolBlock.id,
-            content: JSON.stringify(truncated),
-          };
+          resultContent = JSON.stringify(truncated);
         } catch (e) {
-          console.error(`[widget] Tool ${toolBlock.name} error:`, e.message);
-          slackAlert('medium', `Tool failed: ${toolBlock.name}`, {
+          console.error(`[widget] Tool ${funcName} error:`, e.message);
+          slackAlert('medium', `Tool failed: ${funcName}`, {
             message: `${e.message}\n\n*User said:* ${userContentShort}`,
             sessionId, endpoint: 'widget-chat',
           });
-          return {
-            type: 'tool_result',
-            tool_use_id: toolBlock.id,
-            content: JSON.stringify({ error: e.message }),
-          };
+          resultContent = JSON.stringify({ error: e.message });
         }
-      }));
 
-      conversationMessages.push({ role: 'assistant', content: data.content });
-      conversationMessages.push({ role: 'user', content: toolResults });
+        openaiMessages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: resultContent,
+        });
+      }
     }
 
     if (loopCount >= MAX_TOOL_LOOPS && !finalText) {
