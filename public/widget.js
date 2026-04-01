@@ -491,19 +491,19 @@
         transform: translateY(0);
         opacity: 1;
       }
-      /* Larger fonts for mobile readability */
-      .be-msg { font-size: 15px; }
-      .be-input { font-size: 16px; } /* 16px prevents iOS Safari auto-zoom */
-      .be-act { font-size: 13px; }
-      .be-h-title { font-size: 15px; }
-      .be-h-sub { font-size: 12px; }
-      .be-typing-text { font-size: 12px; }
-      .be-footer-link { font-size: 12px; }
+      /* Larger fonts for mobile readability (1.5x) */
+      .be-msg { font-size: 22px; }
+      .be-input { font-size: 24px; }
+      .be-act { font-size: 20px; }
+      .be-h-title { font-size: 22px; }
+      .be-h-sub { font-size: 18px; }
+      .be-typing-text { font-size: 18px; }
+      .be-footer-link { font-size: 18px; }
       /* Bigger tap target for header close button */
       .be-h-dismiss {
         min-width: 44px; min-height: 44px;
         display: flex; align-items: center; justify-content: center;
-        font-size: 18px;
+        font-size: 27px;
         padding: 8px 12px;
         border-radius: 10px;
       }
