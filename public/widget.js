@@ -893,6 +893,8 @@
           addBotMessage("That took too long. Try a simpler question or try again.");
         } else if (err.message === 'RATE_LIMITED') {
           addBotMessage("You're sending messages too fast. Take a breath and try again in a minute.");
+        } else if (err.message && err.message.startsWith('HTTP')) {
+          addBotMessage("Something went wrong on our end. Try again in a moment.");
         } else {
           addBotMessage("Couldn't connect right now. Check your internet and try again.");
         }
