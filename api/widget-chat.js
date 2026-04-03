@@ -2863,22 +2863,40 @@ export default async function handler(req, res) {
     let loopCount = 0;
     let finalText = '';
 
+    // Retry helper for OpenAI rate limits (429) — retries up to 3 times with backoff
+    async function openaiRequest(body) {
+      const MAX_RETRIES = 3;
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(body),
+        });
+
+        if (response.status === 429 && attempt < MAX_RETRIES - 1) {
+          const retryAfter = parseFloat(response.headers.get('retry-after')) || (2 ** attempt + 1);
+          const waitMs = Math.min(retryAfter * 1000, 10000);
+          console.log(`[widget] Rate limited, retry ${attempt + 1}/${MAX_RETRIES} after ${waitMs}ms`);
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+
+        return response;
+      }
+    }
+
     while (loopCount < MAX_TOOL_LOOPS) {
       loopCount++;
       console.log(`[widget] Loop ${loopCount}, messages: ${openaiMessages.length}`);
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          max_completion_tokens: MAX_TOKENS,
-          messages: openaiMessages,
-          tools: TOOL_DEFINITIONS,
-        }),
+      const response = await openaiRequest({
+        model,
+        max_completion_tokens: MAX_TOKENS,
+        messages: openaiMessages,
+        tools: TOOL_DEFINITIONS,
       });
 
       const data = await response.json();
