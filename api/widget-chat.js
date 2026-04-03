@@ -1186,7 +1186,7 @@ async function executeWebSearch(query) {
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
         messages: [{ role: 'user', content: `Search the web for: ${query}\n\nReturn only the factual results — match scores, team form, injury news, etc. Be concise and structured.` }],
-        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
+        tools: [{ type: 'web_search', name: 'web_search', max_uses: 3 }],
       }),
     });
 
