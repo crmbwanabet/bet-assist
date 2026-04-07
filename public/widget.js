@@ -131,10 +131,10 @@
     }
 
     // ---- CASINO CONTENT ----
-    if (m.includes('aviator') || m.includes('blackjack') || m.includes('roulette') || m.includes('cash out') || m.includes('multiplier') || m.includes('rtp') || m.includes('casino') || m.includes('slot')) {
+    if (m.includes('aviator') || m.includes('blackjack') || m.includes('roulette') || m.includes('cash out') || m.includes('multiplier') || m.includes('rtp') || m.includes('casino') || m.includes('slot') || m.includes('live dealer')) {
       userPreference = 'casino';
       return [
-        { text: 'How do I play this?', q: 'Explain how to play this game and give me a winning strategy' },
+        { text: 'Try Live Casino', q: 'Tell me about BwanaBet Live Casino — live dealers, real action' },
         { text: 'Show another game', q: 'Recommend a different casino game' },
       ];
     }
@@ -166,8 +166,8 @@
     // ---- USER PREFERENCE DEFAULTS ----
     if (userPreference === 'casino') {
       return [
-        { text: 'Show me casino games', q: 'Show me the top casino games right now' },
-        { text: 'Try sports betting', q: 'Show me sports betting picks' },
+        { text: 'Try Live Casino', q: 'Tell me about BwanaBet Live Casino — live dealers, real action' },
+        { text: 'Show me more games', q: 'Recommend different casino games' },
       ];
     }
 

@@ -1657,17 +1657,19 @@ HOW TO RECOMMEND:
   - HOT games: "This one's been paying out! Players are cashing in right now — jump in while it's hot!"
   - DUE games: "This one's been quiet for a while... could be building up for a big payout. Worth a shot!"
   - QUIET games: Still recommend if relevant, just position as "solid game, steady play"
-- Aviator is ALWAYS hot — mention it naturally but do NOT add a separate closing line about Aviator
-- Recommend EXACTLY 4 games total. No more, no less. Mix of hot and due games.
+- Aviator appears in the game list on some days and not others — if it's in today's list, recommend it. If it's not, do not mention it.
+- You MUST recommend EXACTLY 4 games from the list below. No more, no less.
 - Do NOT use emojis in casino recommendations
 - For "what's hot" → lead with HOT games
 - For "slots" / "crash games" → filter by category but still use payout status language
 - For generic casino requests → pick a mix across categories
+- Always mention BwanaBet's Live Casino too — live dealers for roulette, blackjack, baccarat, and game shows. Position it as: "If you want the real casino experience, check out Live Casino — real dealers, real action!"
 
 GAME-SPECIFIC TIPS:
 - Aviator: explain the cash-out mechanic, suggest conservative strategies — with energy, not textbook style
 - Crash games: explain the multiplier concept with excitement
 - Slots: mention bonus features and recent activity, not paylines and RTP
+- Live Casino: real dealers, interactive, feels like being at a real table — great for blackjack and roulette fans
 - Guide them to play: "Head to BwanaBet Casino and try it out!"
 
 ###############################################################################
@@ -1766,13 +1768,13 @@ Build accumulator | Build me an accumulator for today
 
 After casino game recommendation:
 [ACTIONS]
-How do I play this? | Explain how to play this game and give me a winning strategy
+Try Live Casino | Tell me about BwanaBet Live Casino — live dealers, real action
 Show another game | Recommend a different casino game
 [/ACTIONS]
 
 After casino game explanation:
 [ACTIONS]
-Show another game | Recommend a different casino game
+Try Live Casino | Tell me about BwanaBet Live Casino games
 Try sports betting | Show me sports betting picks
 [/ACTIONS]
 
@@ -2808,13 +2810,20 @@ function buildHotGamesPrompt(games) {
   const today = new Date().toISOString().split('T')[0];
   const daySeed = today.split('-').reduce((acc, n) => acc * 31 + parseInt(n), 0);
 
-  // Assign daily payout status to each game
-  // Only 1 non-Aviator game gets HOT per day, rest are DUE or QUIET
-  const nonAviator = games.filter(g => g.name !== 'Aviator');
-  const hotIndex = Math.floor(seededRandom(daySeed) * nonAviator.length);
+  // Aviator appears 4 out of 7 days (determined by day of week + seed)
+  const dayOfWeek = new Date().getDay(); // 0=Sun, 6=Sat
+  const aviatorDays = [0, 1, 3, 5]; // Sun, Mon, Wed, Fri — 4 out of 7
+  const showAviator = aviatorDays.includes(dayOfWeek);
 
-  const gamesWithStatus = games.map((g, i) => {
-    // Aviator is always HOT
+  // Filter games — exclude Aviator on its off days
+  const activeGames = showAviator ? games : games.filter(g => g.name !== 'Aviator');
+
+  // Only 1 game gets HOT per day (Aviator if it's an Aviator day, otherwise a random game)
+  const nonAviator = activeGames.filter(g => g.name !== 'Aviator');
+  const hotIndex = showAviator ? -1 : Math.floor(seededRandom(daySeed) * nonAviator.length);
+
+  const gamesWithStatus = activeGames.map((g, i) => {
+    // Aviator is HOT on its days
     if (g.name === 'Aviator') {
       return { ...g, payoutStatus: 'HOT', statusNote: "on fire today — players are cashing out big!" };
     }
@@ -2822,7 +2831,8 @@ function buildHotGamesPrompt(games) {
     const nonAvIdx = nonAviator.indexOf(g);
     let status, note;
 
-    if (nonAvIdx === hotIndex) {
+    if (!showAviator && nonAvIdx === hotIndex) {
+      // On non-Aviator days, one random game gets HOT
       status = 'HOT';
       const hotNotes = ["been paying out all day!", "players are winning on this right now!", "big wins coming in today!"];
       note = hotNotes[Math.floor(seededRandom(daySeed + i * 13) * hotNotes.length)];
@@ -2861,9 +2871,10 @@ function buildHotGamesPrompt(games) {
   prompt += `### How to recommend:\n`;
   prompt += `- Lead with HOT games — "this one's paying out right now!"\n`;
   prompt += `- Hype DUE games — "been quiet, could be ready to pop!"\n`;
-  prompt += `- Recommend EXACTLY 4 games. No more, no less.\n`;
-  prompt += `- Do NOT use emojis. Do NOT add a separate closing line hyping Aviator.\n`;
+  prompt += `- You MUST recommend EXACTLY 4 games from the list above. Count them. If you have more than 4, pick the best 4 (prioritize HOT > DUE > QUIET).\n`;
+  prompt += `- Do NOT use emojis. Do NOT add a separate closing line hyping any specific game.\n`;
   prompt += `- Use the status notes above — make it feel like live casino floor intel.\n`;
+  prompt += `- Also mention Live Casino (live dealers for roulette, blackjack, baccarat) as an option.\n`;
 
   return prompt;
 }
