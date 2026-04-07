@@ -467,6 +467,8 @@
       border: none; font-family: inherit;
     }
     .be-footer-link:hover { color: #f5c518; }
+    #beClearChat { color: #f5c518; }
+    #beClearChat:hover { color: #d4a810; }
 
     /* Hide the floating button when panel is open — header ✕ is the close action */
     .be-btn.be-open { display: none !important; }
