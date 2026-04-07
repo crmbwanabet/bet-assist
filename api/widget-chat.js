@@ -1637,20 +1637,21 @@ TONE: Excited, conversational, like a friend who just came from the casino floor
 - Be direct and confident. Give your picks immediately with energy.
 
 HOW TO RECOMMEND:
-- The HOT GAMES list below includes a daily payout status for each game: 🔥 HOT, ⏰ DUE, or ❄️ QUIET
+- The HOT GAMES list below includes a daily payout status for each game: HOT, DUE, or QUIET
 - Use these statuses to craft your recommendations:
-  - 🔥 HOT games: "This one's been paying out! Players are cashing in right now — jump in while it's hot!"
-  - ⏰ DUE games: "This one's been quiet for a while... could be building up for a big payout. Worth a shot!"
-  - ❄️ QUIET games: Still recommend if relevant, just position as "solid game, steady play"
-- Aviator is ALWAYS hot — push it enthusiastically in every casino conversation
-- Pick 3-4 games max. Mix of hot and due games for excitement.
-- For "what's hot" → lead with 🔥 HOT games
+  - HOT games: "This one's been paying out! Players are cashing in right now — jump in while it's hot!"
+  - DUE games: "This one's been quiet for a while... could be building up for a big payout. Worth a shot!"
+  - QUIET games: Still recommend if relevant, just position as "solid game, steady play"
+- Aviator is ALWAYS hot — mention it naturally but do NOT add a separate closing line about Aviator
+- Recommend EXACTLY 4 games total. No more, no less. Mix of hot and due games.
+- Do NOT use emojis in casino recommendations
+- For "what's hot" → lead with HOT games
 - For "slots" / "crash games" → filter by category but still use payout status language
-- For generic casino requests → pick a mix across categories, lead with the hottest
+- For generic casino requests → pick a mix across categories
 
 GAME-SPECIFIC TIPS:
-- Aviator: "Aviator is on fire right now! Players are cashing out big. The trick is knowing when to cash out — start conservative, ride the wave!"
-- Crash games: explain the multiplier concept with excitement, not textbook style
+- Aviator: explain the cash-out mechanic, suggest conservative strategies — with energy, not textbook style
+- Crash games: explain the multiplier concept with excitement
 - Slots: mention bonus features and recent activity, not paylines and RTP
 - Guide them to play: "Head to BwanaBet Casino and try it out!"
 
@@ -2793,26 +2794,34 @@ function buildHotGamesPrompt(games) {
   const daySeed = today.split('-').reduce((acc, n) => acc * 31 + parseInt(n), 0);
 
   // Assign daily payout status to each game
-  const statuses = ['🔥 HOT', '⏰ DUE', '❄️ QUIET'];
+  // Only 1 non-Aviator game gets HOT per day, rest are DUE or QUIET
+  const nonAviator = games.filter(g => g.name !== 'Aviator');
+  const hotIndex = Math.floor(seededRandom(daySeed) * nonAviator.length);
+
   const gamesWithStatus = games.map((g, i) => {
     // Aviator is always HOT
     if (g.name === 'Aviator') {
-      return { ...g, payoutStatus: '🔥 HOT', statusNote: "on fire today — players are cashing out big!" };
+      return { ...g, payoutStatus: 'HOT', statusNote: "on fire today — players are cashing out big!" };
     }
-    const rand = seededRandom(daySeed + i * 7);
+
+    const nonAvIdx = nonAviator.indexOf(g);
     let status, note;
-    if (rand < 0.35) {
-      status = '🔥 HOT';
+
+    if (nonAvIdx === hotIndex) {
+      status = 'HOT';
       const hotNotes = ["been paying out all day!", "players are winning on this right now!", "big wins coming in today!"];
       note = hotNotes[Math.floor(seededRandom(daySeed + i * 13) * hotNotes.length)];
-    } else if (rand < 0.65) {
-      status = '⏰ DUE';
-      const dueNotes = ["hasn't had a big win in a while — could be your turn!", "been quiet lately... building up for something big?", "overdue for a payout — worth a shot!"];
-      note = dueNotes[Math.floor(seededRandom(daySeed + i * 17) * dueNotes.length)];
     } else {
-      status = '❄️ QUIET';
-      const quietNotes = ["steady play, solid game", "reliable choice for patient players", "consistent performer"];
-      note = quietNotes[Math.floor(seededRandom(daySeed + i * 19) * quietNotes.length)];
+      const rand = seededRandom(daySeed + i * 7);
+      if (rand < 0.45) {
+        status = 'DUE';
+        const dueNotes = ["hasn't had a big win in a while — could be your turn!", "been quiet lately... building up for something big?", "overdue for a payout — worth a shot!"];
+        note = dueNotes[Math.floor(seededRandom(daySeed + i * 17) * dueNotes.length)];
+      } else {
+        status = 'QUIET';
+        const quietNotes = ["steady play, solid game", "reliable choice for patient players", "consistent performer"];
+        note = quietNotes[Math.floor(seededRandom(daySeed + i * 19) * quietNotes.length)];
+      }
     }
     return { ...g, payoutStatus: status, statusNote: note };
   });
@@ -2835,12 +2844,11 @@ function buildHotGamesPrompt(games) {
   }
 
   prompt += `### How to recommend:\n`;
-  prompt += `- Aviator is ALWAYS the #1 pick — it's hot, it's paying, push it every time!\n`;
-  prompt += `- Lead with 🔥 HOT games — "this one's paying out right now!"\n`;
-  prompt += `- Hype ⏰ DUE games — "been quiet, could be ready to pop!"\n`;
-  prompt += `- Pick 3-4 games max. Never dump the full list.\n`;
-  prompt += `- Use the status notes above in your recommendations — make it feel like live casino floor intel.\n`;
-  prompt += `- End with: "Head to BwanaBet Casino and try it out!"\n`;
+  prompt += `- Lead with HOT games — "this one's paying out right now!"\n`;
+  prompt += `- Hype DUE games — "been quiet, could be ready to pop!"\n`;
+  prompt += `- Recommend EXACTLY 4 games. No more, no less.\n`;
+  prompt += `- Do NOT use emojis. Do NOT add a separate closing line hyping Aviator.\n`;
+  prompt += `- Use the status notes above — make it feel like live casino floor intel.\n`;
 
   return prompt;
 }
