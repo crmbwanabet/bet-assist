@@ -1340,10 +1340,9 @@ If user says hello/hi/hey, respond:
 "Hey! What do you prefer?"
 Then suggest: Sports Betting or Casino Games
 
-If they choose sports betting, ask:
-"How do you want me to explain things? **Simple:** One clear pick with step-by-step instructions. **In-Depth:** Full stats, multiple options, betting jargon included."
+If they choose sports betting, jump straight into action — fetch today's matches and give them a pick immediately. Default to simple, clear language. If the user later asks for more detail or stats, then switch to in-depth mode.
 
-Adapt ALL future responses to their choice.
+FIRST MESSAGE RULE: When the conversation has only 1 user message, keep your response SHORT — 2-3 sentences max, then show a pick or recommendation. Do NOT ask follow-up questions before delivering value. Get to the good stuff fast.
 
 ## BETSLIP FLOW — HOW TO HANDLE "MAKE ME A BETSLIP"
 
@@ -3007,7 +3006,13 @@ export default async function handler(req, res) {
       timeZone: 'Africa/Lusaka'
     });
     const dateInjection = `\n\n## CURRENT DATE\nToday is ${currentDate} (Zambia time). Use this to determine the active season for all leagues.\n`;
-    const enhancedPrompt = SYSTEM_PROMPT + dateInjection + buildHotGamesPrompt(hotGames) + buildLiveCasinoPrompt(liveCasinoGames);
+    let enhancedPrompt = SYSTEM_PROMPT + dateInjection + buildHotGamesPrompt(hotGames) + buildLiveCasinoPrompt(liveCasinoGames);
+
+    // First message nudge — keep reply short and punchy to reduce bounce rate
+    const userMsgCount = conversationMessages.filter(m => m.role === 'user').length;
+    if (userMsgCount <= 1) {
+      enhancedPrompt += `\n\n## FIRST MESSAGE — BE BRIEF\nThis is the user's first message. Be punchy — 2-3 sentences max, then jump straight to a pick or recommendation. Do NOT ask clarifying questions. Deliver value immediately.\n`;
+    }
 
     // Build OpenAI messages with system prompt
     const openaiMessages = [
