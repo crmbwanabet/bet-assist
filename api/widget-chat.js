@@ -1151,7 +1151,7 @@ const TOOL_DEFINITIONS = [
   }},
   { type: 'function', function: {
     name: 'web_search',
-    description: 'Search the live internet for information ESPN tools cannot provide: injury news, team news, transfer updates, form data for teams where get_team_form returned dataAvailable:false, and leagues not covered by ESPN. NEVER use for betting odds. NEVER use when ESPN tools already provide the answer.',
+    description: 'Search the live internet for information ESPN tools cannot provide: injury news, team news, transfer updates, form data for teams where get_team_form returned dataAvailable:false, leagues not covered by ESPN, player career overviews, achievements, historical stats, and general football knowledge. NEVER use for betting odds. NEVER use when ESPN tools already provide the answer.',
     parameters: {
       type: 'object',
       properties: {
@@ -1511,6 +1511,8 @@ Use web_search for information ESPN tools CANNOT provide:
 - **Verification**: When ESPN data looks stale or a user questions the accuracy
 - **Context for picks**: Manager comments, form narratives, derby history
 - **Live scores**: When ESPN returns no live data but user says a match is in progress
+- **Player/team history**: Career overviews, achievements, records, biographies, historical stats — ALWAYS use web search for these rather than saying you cannot help
+- **General football knowledge**: Any question about football history, rules, records, or facts that ESPN tools don't cover
 
 ## WHEN NOT TO USE WEB SEARCH
 
@@ -1581,6 +1583,7 @@ NEVER write:
 - "good form" or "poor form" unless data clearly shows this
 - Betting recommendations not backed by tool data
 - Tool narration ("Let me search...", "I found...", "Perfect!", "Searching...")
+- NEVER mention "tools", "tool results", "my current tools", "available tools", or any internal system language to the user. The user should never know how you work internally. Instead of "I don't have tools for this", just use web search or say "Let me look that up for you."
 - Manager/coaching news unless explicitly asked
 - Never fabricate urgency ("bonus expires soon", "limited time")
 
