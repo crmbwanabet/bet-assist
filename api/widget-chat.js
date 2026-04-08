@@ -2726,36 +2726,36 @@ async function checkRateLimit(sessionId) {
 // RESPONSE VALIDATION — detect hallucinated numbers
 // ============================================
 function validateResponseNumbers(finalText, toolResultsLog, allToolsCalled, sessionId) {
-  if (!finalText || !toolResultsLog?.length) return false;
+  if (!finalText || !toolResultsLog?.length) return { flagged: false, suspicious: [] };
 
   // Skip validation when web_search was used — Claude synthesizes/calculates
   // numbers from web text (e.g. "4W from 9 games" → "44.44%"), so exact
   // number matching produces false positives
-  if (allToolsCalled?.includes('web_search')) return false;
+  if (allToolsCalled?.includes('web_search')) return { flagged: false, suspicious: [] };
 
   // Extract numbers from response (skip very small numbers like positions 1-3, ZMW amounts)
   const numbersInResponse = [...finalText.matchAll(/\b(\d{2,}\.?\d*)\b/g)]
     .map(m => m[1])
     .filter(n => parseFloat(n) > 3);
 
-  if (!numbersInResponse.length) return false;
+  if (!numbersInResponse.length) return { flagged: false, suspicious: [] };
 
   // Flatten all tool results to a single searchable string
   const toolData = JSON.stringify(toolResultsLog);
 
   const suspicious = numbersInResponse.filter(num => !toolData.includes(num));
 
-  // If more than 4 numbers appear in response but not in any tool result, flag it
-  if (suspicious.length > 4) {
+  // If more than 2 numbers appear in response but not in any tool result, flag it
+  if (suspicious.length > 2) {
     console.warn('[widget] Possible hallucinated stats detected:', suspicious);
     slackAlert('medium', 'Possible hallucinated stats', {
       message: `${suspicious.length} numbers not found in tool data: ${suspicious.slice(0, 8).join(', ')}\n\n*AI response (first 300):* ${finalText.slice(0, 300)}`,
       sessionId,
       endpoint: 'widget-chat',
     }).catch(() => {});
-    return true;
+    return { flagged: true, suspicious };
   }
-  return false;
+  return { flagged: false, suspicious: [] };
 }
 
 // ============================================
@@ -3132,12 +3132,77 @@ export default async function handler(req, res) {
         .slice(0, 2);
     }
 
+    // ── Hallucination check + silent retry ────────────────────────
+    const hallucinationResult = validateResponseNumbers(finalText, toolResultsLog, allToolsCalled, sessionId);
+    let hallucinationFlag = hallucinationResult.flagged;
+
+    if (hallucinationFlag && !req._hallucinationRetried) {
+      req._hallucinationRetried = true;
+      console.log('[widget] Hallucination detected, retrying with correction...');
+
+      const correctionMsg = `Your previous response contained stats that do not appear in any tool results. These specific numbers are suspicious and likely hallucinated: ${hallucinationResult.suspicious.join(', ')}.\n\nRules:\n- ONLY use numbers that appear exactly in the tool results above.\n- Do NOT invent percentages, records, or stats from memory.\n- If you do not have data for something, say "data not available" instead of guessing.\n\nRewrite your response using only verified data from the tools.`;
+
+      openaiMessages.push({ role: 'assistant', content: finalText });
+      openaiMessages.push({ role: 'user', content: correctionMsg });
+
+      const retryResp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: openaiMessages,
+          max_completion_tokens: MAX_TOKENS,
+          tools: TOOL_DEFINITIONS,
+        }),
+      });
+
+      if (retryResp.ok) {
+        const retryData = await retryResp.json();
+        const retryChoice = retryData.choices?.[0];
+        const retryText = retryChoice?.message?.content || '';
+        if (retryText) {
+          totalInputTokens += retryData.usage?.prompt_tokens || 0;
+          totalOutputTokens += retryData.usage?.completion_tokens || 0;
+          finalText = retryText;
+
+          // Re-validate the retry
+          const retryValidation = validateResponseNumbers(finalText, toolResultsLog, allToolsCalled, sessionId);
+          hallucinationFlag = retryValidation.flagged;
+          if (!hallucinationFlag) {
+            console.log('[widget] Retry succeeded — hallucination resolved');
+          } else {
+            console.warn('[widget] Retry still has suspicious numbers, sending anyway');
+          }
+
+          // Re-parse actions from retry response
+          const retryActionsMatch = finalText.match(/\[ACTIONS\]([\s\S]*?)\[\/ACTIONS\]/);
+          if (retryActionsMatch) {
+            cleanText = finalText.replace(/\[ACTIONS\][\s\S]*?\[\/ACTIONS\]/, '').trim();
+            actions = retryActionsMatch[1]
+              .trim()
+              .split('\n')
+              .map(line => line.trim())
+              .filter(line => line && line.includes('|'))
+              .map(line => {
+                const [text, query] = line.split('|').map(s => s.trim());
+                return { text, q: query };
+              })
+              .slice(0, 2);
+          } else {
+            cleanText = finalText;
+          }
+        }
+      }
+    }
+
     // ── Quality metrics ────────────────────────────────────────────
     const isFirstMessage = messages.filter(m => m.role === 'user').length <= 1;
     const isTruncated = finalText.length > 0 && !finalText.includes('[/ACTIONS]')
       && totalOutputTokens >= MAX_TOKENS - 10;
     const hasActions = actions && actions.length > 0;
-    const hallucinationFlag = validateResponseNumbers(finalText, toolResultsLog, allToolsCalled, sessionId);
 
     const qualitySignals = {
       is_first_message: isFirstMessage,
