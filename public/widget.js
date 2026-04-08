@@ -47,6 +47,7 @@
       messages: [],        // conversation history for API
       preferences: {},
       sessionStartedAt: Date.now(),
+      betslipIntroShown: false,
     };
   }
 
@@ -102,7 +103,7 @@
       // Pick was given (confidence, bet type mentioned)
       if (m.includes('confidence') || m.includes('my pick') || m.includes('pick:')) {
         return [
-          { text: 'Build accumulator', q: 'Check today\'s other matches and build me an accumulator' },
+          { text: 'Add to Betslip', q: 'Add that pick to my betslip' },
           { text: 'Different pick', q: 'Show me a different betting pick' },
         ];
       }
@@ -116,7 +117,7 @@
     // ---- BETSLIP / ACCUMULATOR SHOWN ----
     if (m.includes('my betslip') || m.includes('accumulator') || m.includes('overall confidence')) {
       return [
-        { text: 'Explain these picks', q: 'Explain the reasoning behind each pick in more detail' },
+        { text: 'Add another pick', q: 'Show me more matches to add to my betslip' },
         { text: 'Start fresh', q: 'Clear my betslip and show me today\'s matches' },
       ];
     }
@@ -124,7 +125,7 @@
     // ---- SPORTS PICK / BET SUGGESTION ----
     if (m.includes('to win') || m.includes('over 2.5') || m.includes('both teams') || m.includes('ready to go')) {
       return [
-        { text: 'Build accumulator', q: 'Check today\'s other matches and build me an accumulator' },
+        { text: 'Add to Betslip', q: 'Add that pick to my betslip' },
         { text: 'Different pick', q: 'Show me a different betting pick' },
       ];
     }
@@ -842,6 +843,16 @@
     }
 
     addUserMessage(userText);
+
+    // One-time betslip intro message
+    if (!state.betslipIntroShown && lowerText.includes('betslip')) {
+      state.betslipIntroShown = true;
+      const intro = "I'll help you come up with a betslip, then when we're ready, you can place the bet on BwanaBet. Let's continue!";
+      addBotMessage(intro);
+      state.messages.push({ role: 'assistant', content: intro });
+      saveState();
+    }
+
     state.messages.push({ role: 'user', content: userText });
     input.value = '';
     actionsEl.innerHTML = '';
