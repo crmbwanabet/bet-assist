@@ -3006,13 +3006,7 @@ export default async function handler(req, res) {
       timeZone: 'Africa/Lusaka'
     });
     const dateInjection = `\n\n## CURRENT DATE\nToday is ${currentDate} (Zambia time). Use this to determine the active season for all leagues.\n`;
-    let enhancedPrompt = SYSTEM_PROMPT + dateInjection + buildHotGamesPrompt(hotGames) + buildLiveCasinoPrompt(liveCasinoGames);
-
-    // First message nudge — keep reply short and punchy to reduce bounce rate
-    const userMsgCount = conversationMessages.filter(m => m.role === 'user').length;
-    if (userMsgCount <= 1) {
-      enhancedPrompt += `\n\n## FIRST MESSAGE — BE BRIEF\nThis is the user's first message. Be punchy — 2-3 sentences max, then jump straight to a pick or recommendation. Do NOT ask clarifying questions. Deliver value immediately.\n`;
-    }
+    const enhancedPrompt = SYSTEM_PROMPT + dateInjection + buildHotGamesPrompt(hotGames) + buildLiveCasinoPrompt(liveCasinoGames);
 
     // Build OpenAI messages with system prompt
     const openaiMessages = [
