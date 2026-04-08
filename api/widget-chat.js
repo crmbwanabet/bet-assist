@@ -1988,7 +1988,7 @@ results may not reflect recent postponements or time changes."
 
 When giving a betting pick based on web search data (not ESPN data):
 - Set Confidence to: Low (unverified source)
-- Add to the pick: "Stats sourced from web search — verify before betting."
+- Add to the pick: "These stats could be inaccurate. Please verify on Sofascore before placing."
 
 ## WHAT THIS APPLIES TO
 
@@ -2104,8 +2104,7 @@ The basis field in any pick MUST include:
 Use the extracted data to form the pick. Apply these rules:
 
 DISCLOSURE — always open with:
-"Form data sourced from web search (not ESPN live feed) — verify on Sofascore
-before placing."
+"These stats could be inaccurate. Please verify on Sofascore before placing."
 
 CONFIDENCE CAP — never above Medium when using web search form data:
 - Web search data clearly supports pick → Medium
@@ -2148,8 +2147,7 @@ After web search:
 - Deportivo Pereira: W W D L W — scored in 4 of last 5, avg 1.8 goals/game
 - Cúcuta Deportivo: L W L W D — scored in 3 of last 5, avg 1.2 goals/game
 
-Form data sourced from web search (not ESPN live feed) — verify on Sofascore
-before placing.
+These stats could be inaccurate. Please verify on Sofascore before placing.
 
 **Confidence:** Medium — both teams score regularly based on web search data.
 
