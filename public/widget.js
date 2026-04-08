@@ -40,17 +40,32 @@
   let isProcessing = false;
   let currentView = 'chat';
 
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch (e) {}
+  function newSession() {
     return {
       sessionId: 'bew_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7),
       user: null,          // { name }
       messages: [],        // conversation history for API
       preferences: {},
+      sessionStartedAt: Date.now(),
     };
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        // Expire session after 4 hours
+        const FOUR_HOURS = 4 * 60 * 60 * 1000;
+        if (saved.sessionStartedAt && (Date.now() - saved.sessionStartedAt) > FOUR_HOURS) {
+          return newSession();
+        }
+        // Backfill sessionStartedAt for old sessions
+        if (!saved.sessionStartedAt) saved.sessionStartedAt = Date.now();
+        return saved;
+      }
+    } catch (e) {}
+    return newSession();
   }
 
   function saveState() {
@@ -763,10 +778,7 @@
 
   // Logout clears everything but stays in chat
   logoutBtn.addEventListener('click', () => {
-    state = {
-      sessionId: 'bew_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7),
-      user: null, messages: [], preferences: {},
-    };
+    state = newSession();
     saveState();
     messagesEl.innerHTML = '';
     userInfo.style.display = 'none';
