@@ -1663,7 +1663,7 @@ HOW TO RECOMMEND:
 - For "what's hot" → lead with HOT games
 - For "slots" / "crash games" → filter by category but still use payout status language
 - For generic casino requests → pick a mix across categories
-- Always mention BwanaBet's Live Casino too — live dealers for roulette, blackjack, baccarat, and game shows. Position it as: "If you want the real casino experience, check out Live Casino — real dealers, real action!"
+- Always mention BwanaBet's Live Casino too — full game details, tips, and strategies are in the LIVE CASINO GAMES section. Use that data for accurate recommendations.
 
 GAME-SPECIFIC TIPS:
 - Aviator: explain the cash-out mechanic, suggest conservative strategies — with energy, not textbook style
@@ -2767,6 +2767,9 @@ function validateResponseNumbers(finalText, toolResultsLog, allToolsCalled, sess
 let hotGamesCache = null;
 let hotGamesCacheDate = null;
 let hotGamesCacheTs = 0;
+let liveCasinoCache = null;
+let liveCasinoCacheDate = null;
+let liveCasinoCacheTs = 0;
 const HOT_GAMES_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 async function fetchHotGames() {
@@ -2874,7 +2877,79 @@ function buildHotGamesPrompt(games) {
   prompt += `- You MUST recommend EXACTLY 4 games from the list above. Count them. If you have more than 4, pick the best 4 (prioritize HOT > DUE > QUIET).\n`;
   prompt += `- Do NOT use emojis. Do NOT add a separate closing line hyping any specific game.\n`;
   prompt += `- Use the status notes above — make it feel like live casino floor intel.\n`;
-  prompt += `- Also mention Live Casino (live dealers for roulette, blackjack, baccarat) as an option.\n`;
+  prompt += `- Also mention BwanaBet Live Casino as an option — full game details are in the LIVE CASINO GAMES section below.\n`;
+
+  return prompt;
+}
+
+// ============================================
+// LIVE CASINO GAMES — Supabase fetch + prompt
+// ============================================
+
+async function fetchLiveCasinoGames() {
+  const now = Date.now();
+  const today = new Date().toISOString().split('T')[0];
+  if (liveCasinoCache && liveCasinoCacheDate === today && (now - liveCasinoCacheTs) < HOT_GAMES_TTL_MS) {
+    return liveCasinoCache;
+  }
+
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return liveCasinoCache;
+
+  try {
+    const resp = await fetch(
+      `${url}/rest/v1/live_casino_games?active=eq.true&select=name,category,provider,description,why_play,beginner_tip,strategy,expert_tip,excitement_level,best_for,min_bet_zmw,max_bet_zmw&order=weight.desc&limit=25`,
+      { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+    );
+    if (!resp.ok) return liveCasinoCache;
+    const games = await resp.json();
+    liveCasinoCache = games;
+    liveCasinoCacheDate = today;
+    liveCasinoCacheTs = now;
+    return games;
+  } catch (e) {
+    return liveCasinoCache;
+  }
+}
+
+function buildLiveCasinoPrompt(games) {
+  if (!games || games.length === 0) return '';
+
+  let prompt = `\n\n## BWANABET LIVE CASINO GAMES\n\n`;
+  prompt += `These are the REAL live casino games available on BwanaBet. When a user asks about Live Casino, ONLY recommend games from this list. Use the descriptions, tips, and strategies below — do NOT make up game information.\n\n`;
+
+  // Group by category
+  const categories = {};
+  games.forEach(g => {
+    if (!categories[g.category]) categories[g.category] = [];
+    categories[g.category].push(g);
+  });
+
+  for (const [cat, catGames] of Object.entries(categories)) {
+    prompt += `### ${cat}\n`;
+    catGames.forEach(g => {
+      prompt += `**${g.name}** (${g.provider}) — ${g.excitement_level} excitement, best for ${g.best_for}\n`;
+      prompt += `- What it is: ${g.description}\n`;
+      prompt += `- Why play: ${g.why_play}\n`;
+      prompt += `- Beginner tip: ${g.beginner_tip}\n`;
+      prompt += `- Strategy: ${g.strategy}\n`;
+      prompt += `- Expert tip: ${g.expert_tip}\n`;
+      prompt += `- Bet range: ZMW ${g.min_bet_zmw} – ${g.max_bet_zmw}\n\n`;
+    });
+  }
+
+  prompt += `### How to recommend Live Casino:\n`;
+  prompt += `- When user asks about Live Casino, recommend 3-4 games matched to their vibe.\n`;
+  prompt += `- Ask what they are in the mood for: "Are you feeling lucky and want big thrills, or prefer something more strategic?"\n`;
+  prompt += `  - Thrill seekers → Crazy Time, Sweet Bonanza CandyLand, Lightning Storm\n`;
+  prompt += `  - Strategists → Black Jack, Red Door Roulette, Roulette 1 - Azure\n`;
+  prompt += `  - Beginners → Mega Wheel, Dream Catcher, Auto-Roulette, Crazy Coin Flip\n`;
+  prompt += `  - Social players → Funky Time, Boom City, MONOPOLY Live\n`;
+  prompt += `- Include one tip or strategy per game in your recommendation — make the user feel prepared to play.\n`;
+  prompt += `- End with: "Head to BwanaBet Live Casino — the tables are live right now!"\n`;
+  prompt += `- Do NOT use emojis.\n`;
+  prompt += `- When user asks "how do I play [game]" or wants strategy, use the beginner_tip + strategy + expert_tip fields. Start simple, then offer to go deeper.\n`;
 
   return prompt;
 }
@@ -2922,14 +2997,17 @@ export default async function handler(req, res) {
   const userContentShort = userContentFull.slice(0, 300);
 
   try {
-    // Fetch hot games and inject into system prompt
-    const hotGames = await fetchHotGames();
+    // Fetch hot games + live casino games and inject into system prompt
+    const [hotGames, liveCasinoGames] = await Promise.all([
+      fetchHotGames(),
+      fetchLiveCasinoGames(),
+    ]);
     const currentDate = new Date().toLocaleDateString('en-ZA', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       timeZone: 'Africa/Lusaka'
     });
     const dateInjection = `\n\n## CURRENT DATE\nToday is ${currentDate} (Zambia time). Use this to determine the active season for all leagues.\n`;
-    const enhancedPrompt = SYSTEM_PROMPT + dateInjection + buildHotGamesPrompt(hotGames);
+    const enhancedPrompt = SYSTEM_PROMPT + dateInjection + buildHotGamesPrompt(hotGames) + buildLiveCasinoPrompt(liveCasinoGames);
 
     // Build OpenAI messages with system prompt
     const openaiMessages = [
