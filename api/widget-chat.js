@@ -671,6 +671,30 @@ function getCurrentSeason(sport) {
 }
 
 async function fetchTeamForm(teamName, leagueInput = null, matchCount = 10) {
+  // Step 0: Check Supabase cache (4-hour TTL)
+  // Cache key: normalized team name + league, safe for REST query
+  const normalizeForCache = (s) => (s || '').toLowerCase().trim().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ');
+  const cacheKey = `${normalizeForCache(teamName)}|${normalizeForCache(leagueInput)}`;
+  const CACHE_TTL_MS = 4 * 60 * 60 * 1000;
+
+  try {
+    const cached = await supabaseSelect(
+      'team_form_cache',
+      `cache_key=eq.${encodeURIComponent(cacheKey)}&select=form_data,cached_at&limit=1`
+    );
+    if (cached?.[0]) {
+      const age = Date.now() - new Date(cached[0].cached_at).getTime();
+      // Only serve cache if: within TTL, has valid data, and source is ESPN (not web search)
+      if (age < CACHE_TTL_MS && cached[0].form_data?.dataAvailable && cached[0].form_data?.source === 'espn') {
+        console.log(`[form-cache] HIT for "${teamName}" (${Math.round(age / 60000)}min old)`);
+        return { ...cached[0].form_data, source: 'cache', cacheAge: Math.round(age / 60000) };
+      }
+    }
+  } catch (e) {
+    // Cache unavailable — continue to ESPN (Supabase down should not break the bot)
+    console.warn('[form-cache] Supabase read failed, falling back to ESPN:', e.message);
+  }
+
   // Step 1: find the team
   const searchResults = await searchTeam(teamName);
   if (searchResults.totalFound === 0) {
@@ -788,7 +812,7 @@ async function fetchTeamForm(teamName, leagueInput = null, matchCount = 10) {
     }
     // ── End suspicious data detection ─────────────────────────────────────
 
-    return {
+    const formResult = {
       team: teamName,
       league: ALL_SPORTS[team.sport]?.leagues[team.league] || team.league,
       matchesAnalyzed: recentMatches.length,
@@ -809,7 +833,24 @@ async function fetchTeamForm(teamName, leagueInput = null, matchCount = 10) {
       source: 'espn',
       fetchedAt: new Date().toISOString(),
     };
+
+    // Write to Supabase cache for other sessions to use
+    // Only cache clean ESPN data (never cache suspicious, error, or web search results)
+    if (formResult.dataAvailable && formResult.source === 'espn') {
+      supabaseUpsert('team_form_cache', {
+        cache_key: cacheKey,
+        team_name: teamName,
+        league: formResult.league,
+        form_data: formResult,
+        cached_at: new Date().toISOString(),
+      }).catch((e) => {
+        console.warn('[form-cache] Write failed (non-blocking):', e.message);
+      });
+    }
+
+    return formResult;
   } catch (error) {
+    // ESPN failure should not block the bot — return gracefully
     return { error: error.message, dataAvailable: false };
   }
 }
@@ -1151,7 +1192,7 @@ const TOOL_DEFINITIONS = [
   }},
   { type: 'function', function: {
     name: 'web_search',
-    description: 'Search the live internet for information ESPN tools cannot provide: injury news, team news, transfer updates, form data for teams where get_team_form returned dataAvailable:false, leagues not covered by ESPN, player career overviews, achievements, historical stats, and general football knowledge. NEVER use for betting odds. NEVER use when ESPN tools already provide the answer.',
+    description: 'Search the live internet for information ESPN tools cannot provide: injury news, team news, transfer updates, form data for teams where get_team_form returned dataAvailable:false, leagues not covered by ESPN, PLAYER STATS AND INFO (always search immediately when user asks about a specific player), player career overviews, achievements, historical stats, and general football knowledge. NEVER use for betting odds. NEVER use when ESPN tools already provide the answer.',
     parameters: {
       type: 'object',
       properties: {
@@ -1227,7 +1268,23 @@ async function executeTool(name, input) {
     case 'calculate_bet_payout': return calculatePayout(input.odds, input.stake);
     case 'get_football_by_tier': return await fetchFootballByTier(input.tier, input.days_ahead);
     case 'verify_team_stats': return await verifyTeamStats(input.team_name, input.league, input.claimed_stats);
-    case 'get_team_form': return await fetchTeamForm(input.team_name, input.league, input.match_count || 10);
+    case 'get_team_form': {
+      const formResult = await fetchTeamForm(input.team_name, input.league, input.match_count || 10);
+      // Auto-fallback: if ESPN has no data, try web search instead of leaving it to the LLM
+      if (formResult.dataAvailable === false || formResult.error) {
+        console.log(`[widget] Auto web-search fallback for "${input.team_name}" (ESPN returned no data)`);
+        const webResult = await executeWebSearch(
+          `${input.team_name} recent form results ${new Date().getFullYear()} last 5 matches`
+        );
+        return {
+          ...formResult,
+          webSearchFallback: true,
+          webData: webResult,
+          note: `ESPN had no data for ${input.team_name}. Web search results attached — use these for your analysis.`,
+        };
+      }
+      return formResult;
+    }
     case 'web_search': return await executeWebSearch(input.query);
     case 'manage_betslip': return manageBetslip(
       input.action,
@@ -1512,6 +1569,7 @@ Use web_search for information ESPN tools CANNOT provide:
 - **Context for picks**: Manager comments, form narratives, derby history
 - **Live scores**: When ESPN returns no live data but user says a match is in progress
 - **Player/team history**: Career overviews, achievements, records, biographies, historical stats — ALWAYS use web search for these rather than saying you cannot help
+- **Player stats requests**: When a user asks about a specific player (e.g. "tell me about Ronaldo stats", "Haaland goals this season"), IMMEDIATELY call web_search with the player name + stats + current year. Do NOT ask clarifying questions first — search first, then present what you find. This is a TOP PRIORITY use case for web_search.
 - **General football knowledge**: Any question about football history, rules, records, or facts that ESPN tools don't cover
 
 ## WHEN NOT TO USE WEB SEARCH
@@ -2057,18 +2115,43 @@ RIGHT — always do this:
        BTTS landed in 3/5 for Pereira and 3/5 for Cúcuta."
   ← Every claim traceable to tool results
 
+## HOW get_team_form DATA WORKS
+
+get_team_form uses a 3-tier data pipeline. You do NOT control which tier
+responds — it happens automatically. Just call get_team_form and use
+whatever data comes back:
+
+1. **Cache** (source: "cache") — Recent ESPN data cached in Supabase,
+   shared across all user sessions. Fastest. Data is max 4 hours old.
+   Treat it exactly like ESPN data — same confidence level.
+
+2. **ESPN live** (source: "espn") — Fresh data from ESPN API. Used when
+   cache is empty or expired. This is the primary source.
+
+3. **Web search fallback** (webSearchFallback: true) — If ESPN has no
+   data (lower-tier leagues, unsupported teams), a web search runs
+   automatically and results are attached as webData. Use this data
+   but set confidence to Low and add the verification disclaimer.
+
+You should ALWAYS call get_team_form first. If it returns data (from any
+source), use it. If it returns with webSearchFallback: true, the web
+search has ALREADY been done for you — do NOT call web_search again
+for the same team. Only call web_search manually if you need additional
+context like injuries, news, or head-to-head history.
+
 ## WHEN get_team_form RETURNS NO DATA
 
-If get_team_form returns dataAvailable: false or an error, DO NOT give up.
-Follow the web search fallback below before guessing or refusing.
+If get_team_form returns dataAvailable: false WITH NO webData attached
+(rare — means both ESPN and web search failed), you may:
+1. Try web_search manually with a different query
+2. Tell the user honestly that data is unavailable for this team
+3. Do NOT guess or fabricate stats
 
 ## get_team_form FALLBACK — WEB SEARCH
 
 If get_team_form returns dataAvailable: false for a team (either because
-ESPN had no data or returned suspicious data), you MUST attempt a web
-search fallback before giving up or guessing.
-
-### STEP 1 — Search for each team that failed
+ESPN had no data or returned suspicious data), a web search fallback
+is now triggered automatically. However, if you need to search manually:
 
 Call web_search with this exact query format:
   "[team name] recent results form [year] [league name]"
@@ -2619,7 +2702,7 @@ You can say:
 // WIDGET CHAT HANDLER
 // ============================================
 
-const MAX_TOOL_LOOPS = 12;
+const MAX_TOOL_LOOPS = 6;
 const MAX_TOKENS = 1536;
 
 async function supabaseInsert(table, data) {
@@ -2633,6 +2716,35 @@ async function supabaseInsert(table, data) {
       body: JSON.stringify(data),
     });
   } catch (e) { console.error(`[widget-monitor] ${table}:`, e.message); }
+}
+
+async function supabaseSelect(table, query) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return null;
+  try {
+    const resp = await fetch(`${url}/rest/v1/${table}?${query}`, {
+      headers: { 'apikey': key, 'Authorization': `Bearer ${key}` },
+    });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch (e) { return null; }
+}
+
+async function supabaseUpsert(table, data) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return;
+  try {
+    await fetch(`${url}/rest/v1/${table}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json', 'apikey': key, 'Authorization': `Bearer ${key}`,
+        'Prefer': 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify(data),
+    });
+  } catch (e) { console.error(`[widget-cache] ${table}:`, e.message); }
 }
 
 function estimateCost(inp, out) {
@@ -3009,7 +3121,15 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: 'Too many requests. Please wait a moment.' });
   }
 
-  let conversationMessages = messages.slice(-20);
+  // Sanitize incoming messages — strip anything that isn't a valid user/assistant message
+  // This prevents malformed localStorage data from breaking the OpenAI JSON payload
+  let conversationMessages = messages.slice(-30).filter(m => {
+    if (!m || typeof m !== 'object') return false;
+    if (!['user', 'assistant'].includes(m.role)) return false;
+    if (typeof m.content !== 'string' || !m.content.trim()) return false;
+    return true;
+  }).map(m => ({ role: m.role, content: m.content }));
+
   const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
@@ -3097,10 +3217,25 @@ export default async function handler(req, res) {
         break;
       }
 
+      // If model returned text content alongside tool calls, save it as pending
+      // (prevents duplicate responses where text arrives with an earlier loop's tools)
+      if (message.content && message.content.trim()) {
+        finalText = message.content;
+      }
+
       console.log(`[widget] Executing ${toolCalls.length} tools:`, toolCalls.map(t => t.function?.name).join(', '));
 
       // Add assistant message with tool calls to conversation
-      openaiMessages.push(message);
+      // Ensure content is null (not undefined) — OpenAI requires this for tool_call messages
+      openaiMessages.push({
+        role: 'assistant',
+        content: message.content || null,
+        tool_calls: toolCalls.map(tc => ({
+          id: tc.id,
+          type: 'function',
+          function: { name: tc.function.name, arguments: tc.function.arguments },
+        })),
+      });
 
       // Execute each tool call and add results
       for (const toolCall of toolCalls) {
@@ -3116,6 +3251,8 @@ export default async function handler(req, res) {
           toolResultsLog.push(result);
           const truncated = truncateResult(result);
           resultContent = JSON.stringify(truncated);
+          // Safety: verify the result is valid JSON string
+          if (typeof resultContent !== 'string') resultContent = '{"error":"serialization failed"}';
         } catch (e) {
           console.error(`[widget] Tool ${funcName} error:`, e.message);
           slackAlert('medium', `Tool failed: ${funcName}`, {

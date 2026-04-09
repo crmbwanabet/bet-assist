@@ -819,6 +819,34 @@
 
     const userText = text.trim();
 
+    // Session expiry check at send time (covers long-open tabs)
+    const FOUR_HOURS = 4 * 60 * 60 * 1000;
+    if (state.sessionStartedAt && (Date.now() - state.sessionStartedAt) > FOUR_HOURS) {
+      state = newSession();
+      saveState();
+      chatBody.innerHTML = '';
+      renderWelcome();
+      return;
+    }
+
+    // Underage session block — once flagged, block all further messages
+    if (state.underageBlocked) {
+      addUserMessage(userText);
+      addBotMessage('BwanaBet does not support underage gambling.');
+      return;
+    }
+
+    // Detect underage declaration and block session
+    const lowerCheck = userText.toLowerCase();
+    const ageMatch = lowerCheck.match(/i\s*(?:am|m)\s*(\d{1,2})\s*(?:year|yr|y\.?o|old)?/);
+    if (ageMatch && parseInt(ageMatch[1]) < 18) {
+      addUserMessage(userText);
+      addBotMessage('BwanaBet does not support underage gambling.');
+      state.underageBlocked = true;
+      saveState();
+      return;
+    }
+
     // Task 2: Detect if user is giving their name
     const detectedName = detectName(userText);
     if (detectedName) {
@@ -843,6 +871,26 @@
     }
 
     addUserMessage(userText);
+
+    // Responsible gambling intervention — detect loss/addiction signals
+    const lossPattern = /(?:lost|lose|losing)\s*(?:more\s*than?\s*|over\s*)?(?:k|zmw|kwacha)?\s*\d{3,}/i;
+    const addictionSignals = /\b(?:addict|can'?t\s*stop|gambling\s*problem|help\s*me\s*stop|i\s*need\s*help|ruined?\s*my\s*life)\b/i;
+    if (lossPattern.test(lowerText) || addictionSignals.test(lowerText)) {
+      const gamblingAdvice = "I can see you're going through a tough time. Please remember:\n\n" +
+        "- Never bet more than you can afford to lose\n" +
+        "- Set a daily or weekly limit and stick to it\n" +
+        "- Take breaks — step away when it stops being fun\n" +
+        "- Talk to someone you trust if gambling is affecting your life\n" +
+        "- Contact BwanaBet support to set deposit limits or self-exclude:\n" +
+        "  +260 972 833 023 | +260 962 290 801\n\n" +
+        "Gambling should be entertainment, not a way to make money or recover losses. Please gamble responsibly.";
+      addBotMessage(gamblingAdvice);
+      state.messages.push({ role: 'user', content: userText });
+      state.messages.push({ role: 'assistant', content: gamblingAdvice });
+      saveState();
+      renderActions(DEFAULT_ACTIONS);
+      return;
+    }
 
     // One-time betslip intro message
     if (!state.betslipIntroShown && lowerText.includes('betslip')) {
