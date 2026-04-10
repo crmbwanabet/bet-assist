@@ -872,6 +872,30 @@
 
     addUserMessage(userText);
 
+    // Abuse detection — mute session after repeated profanity
+    const profanityPattern = /\b(?:fuck\s*(?:you|off|u)?|bitch|shit|ass\s*hole|dick|cunt|stfu|piss\s*off)\b/i;
+    if (profanityPattern.test(lowerText)) {
+      state.abuseCount = (state.abuseCount || 0) + 1;
+      saveState();
+      if (state.abuseCount >= 3) {
+        state.abuseMuted = true;
+        saveState();
+        addBotMessage('This session has been muted due to repeated abuse. Please restart the chat if you need help.');
+        return;
+      }
+      if (state.abuseCount === 2) {
+        addBotMessage('Please keep it respectful. One more and this session will be muted.');
+        state.messages.push({ role: 'user', content: userText });
+        state.messages.push({ role: 'assistant', content: 'Please keep it respectful.' });
+        saveState();
+        return;
+      }
+    }
+    if (state.abuseMuted) {
+      addBotMessage('This session has been muted due to repeated abuse. Please restart the chat if you need help.');
+      return;
+    }
+
     // Responsible gambling intervention — detect loss/addiction signals
     const lossPattern = /(?:lost|lose|losing)\s*(?:more\s*than?\s*|over\s*)?(?:k|zmw|kwacha)?\s*\d{3,}/i;
     const addictionSignals = /\b(?:addict|can'?t\s*stop|gambling\s*problem|help\s*me\s*stop|i\s*need\s*help|ruined?\s*my\s*life)\b/i;
