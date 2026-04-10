@@ -3207,7 +3207,14 @@ export default async function handler(req, res) {
       timeZone: 'Africa/Lusaka'
     });
     const dateInjection = `\n\n## CURRENT DATE\nToday is ${currentDate} (Zambia time). Use this to determine the active season for all leagues.\n`;
-    const enhancedPrompt = SYSTEM_PROMPT + dateInjection + buildHotGamesPrompt(hotGames) + buildLiveCasinoPrompt(liveCasinoGames);
+    // Count previous picks in conversation to trigger accumulator upsell
+    const pickCount = conversationMessages.filter(m =>
+      m.role === 'assistant' && typeof m.content === 'string' && /My Pick:/i.test(m.content)
+    ).length;
+    const pickInjection = pickCount >= 3
+      ? `\n\n## ACCUMULATOR ALERT\nYou have already given ${pickCount} single-match picks in this conversation. You MUST end your next response with: "You've got ${pickCount + 1} picks so far — want me to combine them into an accumulator for a bigger payout?" and set the first action button to "Build accumulator | Combine my picks into an accumulator betslip".\n`
+      : '';
+    const enhancedPrompt = SYSTEM_PROMPT + dateInjection + pickInjection + buildHotGamesPrompt(hotGames) + buildLiveCasinoPrompt(liveCasinoGames);
 
     // Build OpenAI messages with system prompt
     const openaiMessages = [
