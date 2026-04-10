@@ -3237,11 +3237,11 @@ export default async function handler(req, res) {
         })),
       });
 
-      // Execute each tool call and add results
-      for (const toolCall of toolCalls) {
+      // Execute all tool calls in parallel for speed
+      const toolPromises = toolCalls.map(async (toolCall) => {
         const funcName = toolCall.function?.name;
         const funcArgs = toolCall.function?.arguments;
-        if (!funcName) continue;
+        if (!funcName) return { toolCall, resultContent: '{"error":"no function name"}' };
 
         allToolsCalled.push(funcName);
         let resultContent;
@@ -3251,7 +3251,6 @@ export default async function handler(req, res) {
           toolResultsLog.push(result);
           const truncated = truncateResult(result);
           resultContent = JSON.stringify(truncated);
-          // Safety: verify the result is valid JSON string
           if (typeof resultContent !== 'string') resultContent = '{"error":"serialization failed"}';
         } catch (e) {
           console.error(`[widget] Tool ${funcName} error:`, e.message);
@@ -3261,7 +3260,13 @@ export default async function handler(req, res) {
           });
           resultContent = JSON.stringify({ error: e.message });
         }
+        return { toolCall, resultContent };
+      });
 
+      const toolResults = await Promise.all(toolPromises);
+
+      // Add results in order (OpenAI requires tool results match tool_call order)
+      for (const { toolCall, resultContent } of toolResults) {
         openaiMessages.push({
           role: 'tool',
           tool_call_id: toolCall.id,
