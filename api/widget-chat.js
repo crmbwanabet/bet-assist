@@ -1262,8 +1262,8 @@ async function executeTool(name, input) {
   switch (name) {
     case 'get_games': {
       const gamesResult = await fetchGames(input.league, input.days_ahead);
-      if (gamesResult.error || gamesResult.totalGames === 0) {
-        gamesResult._fallbackHint = 'ESPN returned no results. You MUST now call web_search to answer the user\'s question. Do NOT say "no matches found" without searching the web first.';
+      if (gamesResult.error || gamesResult.totalGames === 0 || (gamesResult.completedGames && gamesResult.completedGames.length === 0)) {
+        gamesResult._fallbackHint = 'ESPN returned no completed match results. You MUST now call web_search to answer the user\'s question. Do NOT say "no matches found" without searching the web first.';
       }
       return gamesResult;
     }
@@ -1300,8 +1300,9 @@ async function executeTool(name, input) {
     case 'calculate_bet_payout': return calculatePayout(input.odds, input.stake);
     case 'get_football_by_tier': {
       const tierResult = await fetchFootballByTier(input.tier, input.days_ahead);
-      if (tierResult.error || (tierResult.totalGames === 0 && tierResult.leagues?.every(l => l.totalGames === 0))) {
-        tierResult._fallbackHint = 'ESPN returned no matches for this tier. You MUST now call web_search to answer the user\'s question.';
+      const allCompleted = tierResult.leagues?.flatMap(l => l.completedGames || []) || [];
+      if (tierResult.error || tierResult.totalGames === 0 || allCompleted.length === 0) {
+        tierResult._fallbackHint = 'ESPN returned no completed match results for this tier. You MUST now call web_search to answer the user\'s question.';
       }
       return tierResult;
     }
