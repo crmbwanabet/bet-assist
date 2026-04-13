@@ -1260,15 +1260,51 @@ async function executeWebSearch(query) {
 // ============================================
 async function executeTool(name, input) {
   switch (name) {
-    case 'get_games': return await fetchGames(input.league, input.days_ahead);
-    case 'get_standings': return await fetchLeagueStandings(input.league);
-    case 'get_game_stats': return await fetchGameStats(input.league, input.game_id);
+    case 'get_games': {
+      const gamesResult = await fetchGames(input.league, input.days_ahead);
+      if (gamesResult.error || gamesResult.totalGames === 0) {
+        gamesResult._fallbackHint = 'ESPN returned no results. You MUST now call web_search to answer the user\'s question. Do NOT say "no matches found" without searching the web first.';
+      }
+      return gamesResult;
+    }
+    case 'get_standings': {
+      const standingsResult = await fetchLeagueStandings(input.league);
+      if (standingsResult.error) {
+        standingsResult._fallbackHint = 'ESPN returned no standings. You MUST now call web_search to find current standings.';
+      }
+      return standingsResult;
+    }
+    case 'get_game_stats': {
+      const statsResult = await fetchGameStats(input.league, input.game_id);
+      if (statsResult.error) {
+        statsResult._fallbackHint = 'ESPN returned no stats. You MUST now call web_search to find this match info.';
+      }
+      return statsResult;
+    }
     case 'search_team': return await searchTeam(input.team_name);
-    case 'get_team_stats': return await fetchTeamStats(input.team_name, input.league);
-    case 'get_head_to_head': return await fetchHeadToHead(input.team1, input.team2, input.league);
+    case 'get_team_stats': {
+      const teamStatsResult = await fetchTeamStats(input.team_name, input.league);
+      if (teamStatsResult.error) {
+        teamStatsResult._fallbackHint = 'ESPN returned no team stats. You MUST now call web_search to find this info.';
+      }
+      return teamStatsResult;
+    }
+    case 'get_head_to_head': {
+      const h2hResult = await fetchHeadToHead(input.team1, input.team2, input.league);
+      if (h2hResult.error) {
+        h2hResult._fallbackHint = 'ESPN returned no H2H data. You MUST now call web_search to find head-to-head info.';
+      }
+      return h2hResult;
+    }
     case 'list_leagues': return listAvailableLeagues(input.sport);
     case 'calculate_bet_payout': return calculatePayout(input.odds, input.stake);
-    case 'get_football_by_tier': return await fetchFootballByTier(input.tier, input.days_ahead);
+    case 'get_football_by_tier': {
+      const tierResult = await fetchFootballByTier(input.tier, input.days_ahead);
+      if (tierResult.error || (tierResult.totalGames === 0 && tierResult.leagues?.every(l => l.totalGames === 0))) {
+        tierResult._fallbackHint = 'ESPN returned no matches for this tier. You MUST now call web_search to answer the user\'s question.';
+      }
+      return tierResult;
+    }
     case 'verify_team_stats': return await verifyTeamStats(input.team_name, input.league, input.claimed_stats);
     case 'get_team_form': {
       const formResult = await fetchTeamForm(input.team_name, input.league, input.match_count || 10);
