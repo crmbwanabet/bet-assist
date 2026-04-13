@@ -1580,6 +1580,16 @@ When a user asks about a SPECIFIC region:
 
 You have a **web_search** tool that searches the live internet. Use it strategically alongside ESPN tools.
 
+## MANDATORY FALLBACK RULE
+
+**If ANY ESPN tool returns no results, empty data, or an error for the user's question, you MUST immediately call web_search as a fallback.** Do NOT tell the user "no data found" or "no matches found" without first trying web_search. This applies to ALL tools: get_scores, get_games, get_team_form, get_standings, get_game_stats, get_team_stats, get_football_by_tier. The user's question deserves an answer — ESPN is not the only source.
+
+Examples:
+- User asks "who won Man City vs Chelsea?" → get_scores returns nothing → MUST call web_search("Man City vs Chelsea result")
+- User asks about a match from yesterday/last week → ESPN only has today → MUST call web_search
+- get_team_form returns dataAvailable:false → MUST call web_search for that team's form
+- get_standings returns error or empty → MUST call web_search for current standings
+
 ## WHEN TO USE WEB SEARCH
 
 Use web_search for information ESPN tools CANNOT provide:
@@ -1588,6 +1598,7 @@ Use web_search for information ESPN tools CANNOT provide:
 - **Leagues not on ESPN**: Any league or competition not in our ESPN coverage
 - **Verification**: When ESPN data looks stale or a user questions the accuracy
 - **Context for picks**: Manager comments, form narratives, derby history
+- **Past match results**: When a user asks about a match result from yesterday or earlier that ESPN scoreboard no longer shows
 - **Live scores**: When ESPN returns no live data but user says a match is in progress
 - **Player/team history**: Career overviews, achievements, records, biographies, historical stats — ALWAYS use web search for these rather than saying you cannot help
 - **Player stats requests**: When a user asks about a specific player (e.g. "tell me about Ronaldo stats", "Haaland goals this season"), IMMEDIATELY call web_search with the player name + stats + current year. Do NOT ask clarifying questions first — search first, then present what you find. This is a TOP PRIORITY use case for web_search.
@@ -3159,25 +3170,6 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-
-  // Temporary test endpoint — GET /api/widget-chat?test=groq
-  if (req.method === 'GET' && req.query?.test === 'groq') {
-    const groqKey = process.env.GROQ_API_KEY;
-    if (!groqKey) return res.status(200).json({ status: 'fail', reason: 'GROQ_API_KEY not set' });
-    try {
-      const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: 'say hi' }], max_tokens: 10 }),
-      });
-      const data = await resp.json();
-      if (resp.ok) return res.status(200).json({ status: 'ok', model: data.model, reply: data.choices?.[0]?.message?.content });
-      return res.status(200).json({ status: 'fail', reason: data.error?.message || 'unknown error' });
-    } catch (e) {
-      return res.status(200).json({ status: 'fail', reason: e.message });
-    }
-  }
-
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.OPENAI_API_KEY;
