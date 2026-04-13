@@ -3384,6 +3384,27 @@ export default async function handler(req, res) {
           content: resultContent,
         });
       }
+
+      // Auto web-search fallback: if any ESPN tool returned empty/error and no web_search was called
+      const hasWebSearch = allToolsCalled.includes('web_search');
+      const hasFailedEspn = toolResults.some(({ resultContent }) => {
+        try { return JSON.parse(resultContent)?._fallbackHint; } catch { return false; }
+      });
+      if (hasFailedEspn && !hasWebSearch) {
+        const userMsg = messages[messages.length - 1]?.content || '';
+        console.log(`[widget] Auto web-search fallback triggered for: "${userMsg.slice(0, 80)}"`);
+        try {
+          const webResult = await executeWebSearch(userMsg);
+          allToolsCalled.push('web_search');
+          // Inject as a system message so the model sees the web data
+          openaiMessages.push({
+            role: 'user',
+            content: `[SYSTEM: ESPN had no results. Here is web search data for the user's question — use this to answer:\n${JSON.stringify(truncateResult(webResult))}]`,
+          });
+        } catch (e) {
+          console.error('[widget] Auto web-search fallback error:', e.message);
+        }
+      }
     }
 
     if (loopCount >= MAX_TOOL_LOOPS && !finalText) {
