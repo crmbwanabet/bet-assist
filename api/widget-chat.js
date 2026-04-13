@@ -749,8 +749,10 @@ async function fetchTeamForm(teamName, leagueInput = null, matchCount = 10) {
       const teamComp = isHome ? homeComp : awayComp;
       const opponentComp = isHome ? awayComp : homeComp;
 
-      const teamScore = parseInt(teamComp?.score) || 0;
-      const oppScore = parseInt(opponentComp?.score) || 0;
+      const rawTeamScore = teamComp?.score;
+      const teamScore = parseInt(typeof rawTeamScore === 'object' ? (rawTeamScore?.displayValue ?? rawTeamScore?.value) : rawTeamScore) || 0;
+      const rawOppScore = opponentComp?.score;
+      const oppScore = parseInt(typeof rawOppScore === 'object' ? (rawOppScore?.displayValue ?? rawOppScore?.value) : rawOppScore) || 0;
 
       let result;
       if (teamScore > oppScore) result = 'W';
@@ -3157,6 +3159,25 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // Temporary test endpoint — GET /api/widget-chat?test=groq
+  if (req.method === 'GET' && req.query?.test === 'groq') {
+    const groqKey = process.env.GROQ_API_KEY;
+    if (!groqKey) return res.status(200).json({ status: 'fail', reason: 'GROQ_API_KEY not set' });
+    try {
+      const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: 'say hi' }], max_tokens: 10 }),
+      });
+      const data = await resp.json();
+      if (resp.ok) return res.status(200).json({ status: 'ok', model: data.model, reply: data.choices?.[0]?.message?.content });
+      return res.status(200).json({ status: 'fail', reason: data.error?.message || 'unknown error' });
+    } catch (e) {
+      return res.status(200).json({ status: 'fail', reason: e.message });
+    }
+  }
+
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.OPENAI_API_KEY;
