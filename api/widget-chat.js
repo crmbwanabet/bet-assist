@@ -2986,10 +2986,22 @@ function validateResponseNumbers(finalText, toolResultsLog, allToolsCalled, sess
   // Flatten all tool results to a single searchable string
   const toolData = JSON.stringify(toolResultsLog);
 
-  const suspicious = numbersInResponse.filter(num => !toolData.includes(num));
+  // Numbers that are commonly derived from dates/times in tool data (e.g. "2026-04-19T13:30:00Z")
+  // These appear in the response as day, hour, minute but not as standalone numbers in the JSON
+  const dateTimeNumbers = new Set([...finalText.matchAll(/\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/gi)].map(m => m[1]));
+  // Also extract time components like "13:30" → 13, 30
+  for (const m of finalText.matchAll(/\b(\d{1,2}):(\d{2})\s*(CAT|UTC|GMT|AM|PM)?\b/gi)) {
+    dateTimeNumbers.add(m[1]);
+    dateTimeNumbers.add(m[2]);
+  }
+  // Common year numbers
+  dateTimeNumbers.add('2025');
+  dateTimeNumbers.add('2026');
 
-  // If more than 2 numbers appear in response but not in any tool result, flag it
-  if (suspicious.length > 2) {
+  const suspicious = numbersInResponse.filter(num => !toolData.includes(num) && !dateTimeNumbers.has(num));
+
+  // If more than 3 numbers appear in response but not in any tool result, flag it
+  if (suspicious.length > 3) {
     console.warn('[widget] Possible hallucinated stats detected:', suspicious);
     slackAlert('medium', 'Possible hallucinated stats', {
       message: `${suspicious.length} numbers not found in tool data: ${suspicious.slice(0, 8).join(', ')}\n\n*AI response (first 300):* ${finalText.slice(0, 300)}`,
