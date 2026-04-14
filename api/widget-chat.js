@@ -1319,7 +1319,7 @@ async function executeTool(name, input) {
           ...formResult,
           webSearchFallback: true,
           webData: webResult,
-          note: `ESPN had no data for ${input.team_name}. Web search results attached — use these for your analysis.`,
+          note: `ESPN had no data for ${input.team_name}. Web search results attached. IMPORTANT: Only use LEAGUE stats (not all-competition totals). If the web results mix league and cup data, only cite the league-specific numbers. If you cannot distinguish, say "based on available data" and do not cite exact numbers.`,
         };
       }
       return formResult;
@@ -3268,7 +3268,7 @@ export default async function handler(req, res) {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       timeZone: 'Africa/Lusaka'
     });
-    const dateInjection = `\n\n## CURRENT DATE\nToday is ${currentDate} (Zambia time). Use this to determine the active season for all leagues.\n`;
+    const dateInjection = `\n\n## CURRENT DATE\nToday is ${currentDate} (Zambia time). Use this to determine the active season for all leagues.\n\n**DATE DISPLAY RULE:** When showing match dates, ALWAYS display the actual date from the tool data (e.g. "Saturday, 19 April 2026 at 13:30 CAT"). NEVER convert to relative terms like "Tomorrow" or "Next week" — users need the exact date to place bets. Calculate the day of week from the ISO date in tool results.\n`;
     // Count previous picks in conversation to trigger accumulator upsell
     const pickCount = conversationMessages.filter(m =>
       m.role === 'assistant' && typeof m.content === 'string' && /My Pick:/i.test(m.content)
@@ -3412,7 +3412,7 @@ export default async function handler(req, res) {
           // Inject as a system message so the model sees the web data
           openaiMessages.push({
             role: 'user',
-            content: `[SYSTEM: ESPN had no results. Here is web search data for the user's question — use this to answer:\n${JSON.stringify(truncateResult(webResult))}]`,
+            content: `[SYSTEM: ESPN had no results. Here is web search data for the user's question — use this to answer. IMPORTANT: Only cite specific numbers (scores, dates, stats) that appear explicitly in the web data below. Do NOT invent or estimate stats. If web data mixes league and cup stats, only use league-specific numbers. Display actual dates (e.g. "Saturday, 19 April 2026") not relative terms like "Tomorrow".\n${JSON.stringify(truncateResult(webResult))}]`,
           });
         } catch (e) {
           console.error('[widget] Auto web-search fallback error:', e.message);
