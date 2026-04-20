@@ -13,7 +13,7 @@
  * Usage:
  * <script src="https://bet-assist.vercel.app/widget.js" data-offset-bottom="80" async></script>
  *
- * Last updated: 2026-03-17
+ * Last updated: 2026-04-17
  */
 (function () {
   'use strict';
@@ -489,6 +489,61 @@
     /* Hide the floating button when panel is open — header ✕ is the close action */
     .be-btn.be-open { display: none !important; }
 
+    /* ---- TEASER POPUP (styled like a chat bot message) ---- */
+    .be-teaser {
+      position: absolute;
+      bottom: 68px;
+      right: 0;
+      width: 260px;
+      padding: 10px 32px 10px 14px;
+      background: #131829;
+      border: 1px solid #1a2035;
+      border-radius: 14px;
+      border-bottom-right-radius: 4px;
+      color: #cbd5e1;
+      font-size: 13px;
+      line-height: 1.6;
+      font-weight: 400;
+      cursor: pointer;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.6);
+      opacity: 0;
+      transform: translateY(4px);
+      pointer-events: none;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .be-teaser.be-visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    .be-teaser::after {
+      content: '';
+      position: absolute;
+      bottom: -6px;
+      right: 22px;
+      width: 10px; height: 10px;
+      background: #131829;
+      border-right: 1px solid #1a2035;
+      border-bottom: 1px solid #1a2035;
+      transform: rotate(45deg);
+    }
+    .be-teaser strong { color: #f5c518; font-weight: 600; }
+    .be-teaser-close {
+      position: absolute;
+      top: 4px; right: 6px;
+      width: 20px; height: 20px;
+      background: transparent;
+      border: none;
+      color: #4b5e7a;
+      font-size: 13px; line-height: 1;
+      cursor: pointer;
+      border-radius: 50%;
+      padding: 0;
+      font-family: inherit;
+      transition: color 0.15s, background 0.15s;
+    }
+    .be-teaser-close:hover { color: #fff; background: rgba(239,68,68,0.25); }
+
     /* ---- MOBILE ---- */
     @media (max-width: 480px) {
       .be-widget { bottom: 0; right: 0; left: 0; }
@@ -529,6 +584,32 @@
       .be-h-user { display: none !important; }
       .be-h-dot { display: none !important; }
       .be-scroll-down { bottom: 100px; }
+
+      /* Teaser popup sits above the floating button on mobile */
+      .be-teaser {
+        position: fixed;
+        bottom: ${OFFSET_BOTTOM + 70}px;
+        right: ${OFFSET_RIGHT}px;
+        left: auto;
+        width: auto;
+        max-width: calc(100vw - ${OFFSET_RIGHT * 2}px);
+        font-size: 18px;
+        line-height: 1.5;
+        padding: 14px 44px 14px 18px;
+        border-bottom-right-radius: 4px;
+      }
+      .be-teaser::after {
+        bottom: -6px;
+        right: 20px;
+        transform: rotate(45deg);
+        border-right: 1px solid #1a2035;
+        border-bottom: 1px solid #1a2035;
+        border-top: none;
+      }
+      .be-teaser-close {
+        width: 30px; height: 30px;
+        font-size: 18px;
+      }
     }
   `;
 
@@ -590,6 +671,10 @@
       <div class="be-badge" id="beBadge"></div>
       <div class="be-dismiss-float" id="beDismissFloat" title="Remove widget">✕</div>
     </button>
+    <div class="be-teaser" id="beTeaser" role="button" tabindex="0" aria-label="Try BetPredict AI chatbot">
+      Try <strong>Bwanabet</strong> new AI chatbot to predict bets and check stats!
+      <button class="be-teaser-close" id="beTeaserClose" aria-label="Dismiss">✕</button>
+    </div>
   `;
   shadow.appendChild(root);
   document.body.appendChild(host);
@@ -702,9 +787,70 @@
   }
 
   // ============================================
+  // TEASER POPUP — appears 5s after load, auto-hides at 60s,
+  // 1-hour cooldown per-browser to avoid nagging returning players on shared shop PCs
+  // ============================================
+  const TEASER_KEY = 'betpredict_popup_last_shown';
+  const TEASER_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+  const TEASER_DELAY_MS = 5000;
+  const TEASER_VISIBLE_MS = 60 * 1000;
+  const teaserEl = $('beTeaser');
+  const teaserCloseBtn = $('beTeaserClose');
+  let teaserHideTimer = null;
+  let teaserShowTimer = null;
+  let teaserDismissed = false;
+
+  function markTeaserShown() {
+    try { localStorage.setItem(TEASER_KEY, String(Date.now())); } catch (e) {}
+  }
+
+  function shouldShowTeaser() {
+    try {
+      const last = parseInt(localStorage.getItem(TEASER_KEY) || '0', 10);
+      if (!last) return true;
+      return (Date.now() - last) > TEASER_COOLDOWN_MS;
+    } catch (e) { return true; }
+  }
+
+  function hideTeaser() {
+    if (teaserDismissed) return;
+    teaserDismissed = true;
+    teaserEl.classList.remove('be-visible');
+    clearTimeout(teaserHideTimer);
+    clearTimeout(teaserShowTimer);
+  }
+
+  function showTeaser() {
+    if (teaserDismissed || isOpen) return;
+    teaserEl.classList.add('be-visible');
+    markTeaserShown();
+    teaserHideTimer = setTimeout(hideTeaser, TEASER_VISIBLE_MS);
+  }
+
+  if (shouldShowTeaser()) {
+    teaserShowTimer = setTimeout(showTeaser, TEASER_DELAY_MS);
+  } else {
+    teaserDismissed = true;
+  }
+
+  // Clicking the popup opens the chat
+  teaserEl.addEventListener('click', (e) => {
+    if (e.target === teaserCloseBtn) return;
+    hideTeaser();
+    if (!isOpen) toggleBtn.click();
+  });
+
+  // × dismisses without opening chat
+  teaserCloseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    hideTeaser();
+  });
+
+  // ============================================
   // TOGGLE
   // ============================================
   toggleBtn.addEventListener('click', async () => {
+    hideTeaser();
     isOpen = !isOpen;
     loadFont();
     panel.classList.toggle('be-visible', isOpen);
