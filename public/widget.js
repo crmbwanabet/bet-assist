@@ -565,14 +565,14 @@
         transform: translateY(0);
         opacity: 1;
       }
-      /* Larger fonts for mobile readability (1.5x) */
-      .be-msg { font-size: 22px; }
-      .be-input { font-size: 24px; }
-      .be-act { font-size: 20px; }
-      .be-h-title { font-size: 22px; }
-      .be-h-sub { font-size: 18px; }
-      .be-typing-text { font-size: 18px; }
-      .be-footer-link { font-size: 18px; }
+      /* Mobile font sizes — tuned smaller per owner (2026-04-17) */
+      .be-msg { font-size: 16px; }
+      .be-input { font-size: 18px; }
+      .be-act { font-size: 14px; }
+      .be-h-title { font-size: 16px; }
+      .be-h-sub { font-size: 13px; }
+      .be-typing-text { font-size: 13px; }
+      .be-footer-link { font-size: 13px; }
       /* Bigger tap target for header close button */
       .be-h-dismiss {
         min-width: 44px; min-height: 44px;
@@ -593,9 +593,9 @@
         left: auto;
         width: auto;
         max-width: calc(100vw - ${OFFSET_RIGHT * 2}px);
-        font-size: 18px;
+        font-size: 14px;
         line-height: 1.5;
-        padding: 14px 44px 14px 18px;
+        padding: 12px 40px 12px 16px;
         border-bottom-right-radius: 4px;
       }
       .be-teaser::after {
