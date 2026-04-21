@@ -2512,7 +2512,32 @@ function validateResponseNumbers(finalText, toolResultsLog, allToolsCalled, sess
   dateTimeNumbers.add('2025');
   dateTimeNumbers.add('2026');
 
-  const suspicious = numbersInResponse.filter(num => !toolData.includes(num) && !dateTimeNumbers.has(num));
+  // Derived win rates — the system prompt *teaches* the bot to compute wins/played*100
+  // as "Win rate: X%". Those percentages never appear literally in tool JSON, so we
+  // precompute every possible rate from any {wins, played|games} pair and accept any
+  // response number within ±0.2 of one of them.
+  const derivedRates = [];
+  const visit = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    const w = typeof node.wins === 'number' ? node.wins : null;
+    const g = typeof node.played === 'number' ? node.played
+           : typeof node.games  === 'number' ? node.games : null;
+    if (w !== null && g && g > 0) derivedRates.push((w / g) * 100);
+    Object.values(node).forEach(visit);
+  };
+  visit(toolResultsLog);
+  const matchesDerivedRate = (numStr) => {
+    const v = parseFloat(numStr);
+    if (!Number.isFinite(v)) return false;
+    return derivedRates.some(r => Math.abs(r - v) <= 0.2);
+  };
+
+  const suspicious = numbersInResponse.filter(num =>
+    !toolData.includes(num) &&
+    !dateTimeNumbers.has(num) &&
+    !matchesDerivedRate(num)
+  );
 
   // If more than 3 numbers appear in response but not in any tool result, flag it
   if (suspicious.length > 3) {
