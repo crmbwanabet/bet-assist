@@ -110,11 +110,16 @@ test('derby match surfaces derby_name in body or title', () => {
   assert.ok(out.body.includes('Merseyside Derby') || out.title.includes('Merseyside Derby'));
 });
 
-test('click prompt on match is "Give me a pick for X vs Y"', () => {
+test('click prompt on match includes teams, kickoff, and league', () => {
   const slot = new Date('2026-04-23T08:00:00Z');
   const matches = [{ ...baseMatch, kickoff_utc: '2026-04-23T19:00:00Z' }];
   const out = selectContent({ slotDateTime: slot, shownToday: [], matches, hotGames });
-  assert.equal(out.chatPrompt, 'Give me a pick for Liverpool vs Arsenal');
+  assert.ok(out.chatPrompt.startsWith('Give me a pick for Liverpool vs Arsenal'),
+    `chatPrompt should start with "Give me a pick for Liverpool vs Arsenal", got: ${out.chatPrompt}`);
+  assert.ok(out.chatPrompt.includes('kickoff'),
+    `chatPrompt should mention kickoff, got: ${out.chatPrompt}`);
+  assert.ok(out.chatPrompt.includes('Premier League'),
+    `chatPrompt should mention the league, got: ${out.chatPrompt}`);
   assert.equal(out.fireChat, true);
 });
 
