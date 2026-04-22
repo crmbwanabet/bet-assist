@@ -671,8 +671,8 @@
       <div class="be-badge" id="beBadge"></div>
       <div class="be-dismiss-float" id="beDismissFloat" title="Remove widget">✕</div>
     </button>
-    <div class="be-teaser" id="beTeaser" role="button" tabindex="0" aria-label="Try BetPredict AI chatbot">
-      Try <strong>Bwanabet</strong> new AI chatbot to predict bets and check stats!
+    <div class="be-teaser" id="beTeaser" role="button" tabindex="0" aria-label="BetPredict popup">
+      <span class="be-teaser-text">Try <strong>Bwanabet</strong> new AI chatbot to predict bets and check stats!</span>
       <button class="be-teaser-close" id="beTeaserClose" aria-label="Dismiss">✕</button>
     </div>
   `;
@@ -787,70 +787,177 @@
   }
 
   // ============================================
-  // TEASER POPUP — appears 5s after load, auto-hides at 60s,
-  // 1-hour cooldown per-browser to avoid nagging returning players on shared shop PCs
+  // POPUP ROTATION — fetched from /api/popup-plan
+  // 6 slots/day at 00/04/08/12/16/20 CAT.
+  // Each browser sees a given slot at most once per day.
+  // Click auto-fires a chat prompt (for match/casino) or just opens chat (teaser).
   // ============================================
-  const TEASER_KEY = 'betpredict_popup_last_shown';
-  const TEASER_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
-  const TEASER_DELAY_MS = 5000;
-  const TEASER_VISIBLE_MS = 60 * 1000;
+  // Clean up legacy cooldown key from v1 teaser (removed 2026-04-22).
+  try { localStorage.removeItem('betpredict_popup_last_shown'); } catch (e) {}
+
+  const POPUP_STORAGE_KEY = 'betpredict_popup_shown';
+  const POPUP_BROWSER_ID_KEY = 'betpredict_browser_id';
+  const POPUP_PLAN_URL = BASE_URL + '/api/popup-plan';
+  const POPUP_EVENT_URL = BASE_URL + '/api/popup-event';
+  const POPUP_VISIBLE_MS = 30 * 1000;
+  const POPUP_FETCH_DELAY_MS = 800;
   const teaserEl = $('beTeaser');
   const teaserCloseBtn = $('beTeaserClose');
-  let teaserHideTimer = null;
-  let teaserShowTimer = null;
-  let teaserDismissed = false;
+  let popupHideTimer = null;
+  let popupDismissed = false;
+  let activePopup = null;
 
-  function markTeaserShown() {
-    try { localStorage.setItem(TEASER_KEY, String(Date.now())); } catch (e) {}
-  }
-
-  function shouldShowTeaser() {
+  function getBrowserId() {
     try {
-      const last = parseInt(localStorage.getItem(TEASER_KEY) || '0', 10);
-      if (!last) return true;
-      return (Date.now() - last) > TEASER_COOLDOWN_MS;
-    } catch (e) { return true; }
+      let id = localStorage.getItem(POPUP_BROWSER_ID_KEY);
+      if (!id) {
+        id = 'bid_' + Date.now().toString(36) + '_' +
+             Math.random().toString(36).slice(2, 10);
+        localStorage.setItem(POPUP_BROWSER_ID_KEY, id);
+      }
+      return id;
+    } catch (e) { return null; }
   }
 
-  function hideTeaser() {
-    if (teaserDismissed) return;
-    teaserDismissed = true;
-    teaserEl.classList.remove('be-visible');
-    clearTimeout(teaserHideTimer);
-    clearTimeout(teaserShowTimer);
+  function readShownMap() {
+    try {
+      const raw = localStorage.getItem(POPUP_STORAGE_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) { return {}; }
   }
 
-  function showTeaser() {
-    if (teaserDismissed || isOpen) return;
+  function pruneShownMap(map) {
+    const cutoff = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+      .toISOString().slice(0, 10);
+    for (const k of Object.keys(map)) if (k < cutoff) delete map[k];
+    return map;
+  }
+
+  function shownForToday() {
+    const map = pruneShownMap(readShownMap());
+    const today = new Date().toISOString().slice(0, 10);
+    return Array.isArray(map[today]) ? map[today] : [];
+  }
+
+  function buildShownParam() {
+    return shownForToday().map(s => (s.slot + ':' + s.type)).join(',');
+  }
+
+  function recordShown(slotId, contentType, slotDate) {
+    try {
+      const map = pruneShownMap(readShownMap());
+      const key = slotDate || new Date().toISOString().slice(0, 10);
+      if (!Array.isArray(map[key])) map[key] = [];
+      if (!map[key].some(s => s.slot === slotId)) {
+        map[key].push({ slot: slotId, type: contentType });
+      }
+      localStorage.setItem(POPUP_STORAGE_KEY, JSON.stringify(map));
+    } catch (e) {}
+  }
+
+  function logEvent(eventType, payload) {
+    if (!payload) return;
+    try {
+      fetch(POPUP_EVENT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
+        body: JSON.stringify({
+          event_type: eventType,
+          slot_id: payload.slotId,
+          slot_date: payload.slotDate,
+          content_type: payload.type,
+          content_id: payload.title || null,
+          browser_id: getBrowserId(),
+        }),
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
+  function renderPopupInner(payload) {
+    // Escape everything except the **bold** marker, which maps to <strong>.
+    // The close button is preserved in the template below.
+    var bodyHtml = String(payload.body || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    var inner = '<span class="be-teaser-text">' + bodyHtml + '</span>' +
+                '<button class="be-teaser-close" id="beTeaserClose" aria-label="Dismiss">\u2715</button>';
+    teaserEl.innerHTML = inner;
+    // Re-bind handlers because innerHTML replaced the close button node.
+    var newClose = shadow.getElementById('beTeaserClose');
+    if (newClose) newClose.addEventListener('click', onCloseClick);
+  }
+
+  function renderPopup(payload) {
+    if (!payload || payload.type === 'none') return;
+    activePopup = payload;
+    renderPopupInner(payload);
     teaserEl.classList.add('be-visible');
-    markTeaserShown();
-    teaserHideTimer = setTimeout(hideTeaser, TEASER_VISIBLE_MS);
+    recordShown(payload.slotId, payload.type, payload.slotDate);
+    logEvent('impression', payload);
+    var ttl = Math.max(5000, (payload.ttlSeconds || 30) * 1000);
+    popupHideTimer = setTimeout(function () { hidePopup('timeout'); }, ttl);
   }
 
-  if (shouldShowTeaser()) {
-    teaserShowTimer = setTimeout(showTeaser, TEASER_DELAY_MS);
-  } else {
-    teaserDismissed = true;
+  function hidePopup(reason) {
+    if (popupDismissed) return;
+    popupDismissed = true;
+    teaserEl.classList.remove('be-visible');
+    clearTimeout(popupHideTimer);
+    if (reason === 'user-dismiss' && activePopup) logEvent('dismiss', activePopup);
   }
 
-  // Clicking the popup opens the chat
-  teaserEl.addEventListener('click', (e) => {
-    if (e.target === teaserCloseBtn) return;
-    hideTeaser();
-    if (!isOpen) toggleBtn.click();
-  });
-
-  // × dismisses without opening chat
-  teaserCloseBtn.addEventListener('click', (e) => {
+  function onCloseClick(e) {
     e.stopPropagation();
-    hideTeaser();
-  });
+    hidePopup('user-dismiss');
+  }
+
+  function onPopupClick(e) {
+    if (e.target === teaserCloseBtn || (e.target.closest && e.target.closest('.be-teaser-close'))) return;
+    if (!activePopup) { hidePopup('click'); return; }
+    logEvent('click', activePopup);
+    hidePopup('click');
+    if (!isOpen) toggleBtn.click();
+    if (activePopup.fireChat && activePopup.chatPrompt) {
+      var prompt = activePopup.chatPrompt;
+      setTimeout(function () {
+        try { send(prompt); } catch (err) { /* swallow */ }
+      }, 150);
+    }
+  }
+
+  function fetchAndRenderPopup() {
+    try {
+      var now = new Date().toISOString();
+      var shown = buildShownParam();
+      var qs = '?now=' + encodeURIComponent(now) + '&shown=' + encodeURIComponent(shown);
+      fetch(POPUP_PLAN_URL + qs, { credentials: 'omit' }).then(function (resp) {
+        if (!resp.ok) return null;
+        return resp.json();
+      }).then(function (payload) {
+        if (!payload || payload.type === 'none') return;
+        var already = shownForToday().some(function (s) { return s.slot === payload.slotId; });
+        if (already) return;
+        renderPopup(payload);
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
+  if (teaserEl && teaserCloseBtn) {
+    teaserEl.addEventListener('click', onPopupClick);
+    teaserCloseBtn.addEventListener('click', onCloseClick);
+    setTimeout(fetchAndRenderPopup, POPUP_FETCH_DELAY_MS);
+  }
 
   // ============================================
   // TOGGLE
   // ============================================
   toggleBtn.addEventListener('click', async () => {
-    hideTeaser();
+    hidePopup('chat-open');
     isOpen = !isOpen;
     loadFont();
     panel.classList.toggle('be-visible', isOpen);
