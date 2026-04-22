@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/report",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/match-discovery",
+      "schedule": "45 1,5,9,13,17,21 * * *"
     }
   ]
 }
