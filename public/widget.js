@@ -13,7 +13,7 @@
  * Usage:
  * <script src="https://bet-assist.vercel.app/widget.js" data-offset-bottom="80" async></script>
  *
- * Last updated: 2026-04-17
+ * Last updated: 2026-04-22
  */
 (function () {
   'use strict';
