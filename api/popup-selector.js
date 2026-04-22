@@ -61,6 +61,10 @@ function buildMatchPayload(match, subtype, slotDateTime, slotId) {
   const kickoffStr = formatKickoff(match.kickoff_utc, slotDateTime);
   const titleLead = match.is_derby && match.derby_name ? match.derby_name : `${home} vs ${away}`;
   const titleBody = match.is_derby && match.derby_name ? `${home} vs ${away}` : '';
+  // Enrich the auto-fired chat prompt with kickoff + league so the bot doesn't
+  // need a second ESPN round-trip just to surface those values in its reply.
+  const leagueSuffix = match.league ? `, ${match.league}` : '';
+  const chatPrompt = `Give me a pick for ${home} vs ${away} (kickoff ${kickoffStr}${leagueSuffix})`;
   return {
     slotId,
     slotDate: catDateStr(slotDateTime),
@@ -68,7 +72,7 @@ function buildMatchPayload(match, subtype, slotDateTime, slotId) {
     subtype,
     title: titleLead,
     body: titleBody ? `${titleBody} \u2014 ${kickoffStr}. Get a pick \u2192` : `${kickoffStr}. Get a pick \u2192`,
-    chatPrompt: `Give me a pick for ${home} vs ${away}`,
+    chatPrompt,
     fireChat: true,
     ttlSeconds: 30,
   };
