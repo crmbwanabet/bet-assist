@@ -44,20 +44,31 @@ export default async function handler(req, res) {
     const key = process.env.SUPABASE_SERVICE_KEY;
     if (!url || !key) return res.status(200).json({ ok: false, reason: 'no-storage' });
 
-    fetch(`${url}/rest/v1/popup_events`, {
-      method: 'POST',
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=minimal',
-      },
-      body: JSON.stringify({
-        event_type, slot_id, slot_date, content_type,
-        content_id: content_id || null,
-        browser_id: browser_id || null,
-      }),
-    }).catch(err => console.error('[popup-event] insert failed:', err?.message));
+    // Await the insert so Vercel doesn't terminate the function before fetch completes.
+    // Small latency cost (~50-100ms) in exchange for reliable event persistence.
+    try {
+      const r = await fetch(`${url}/rest/v1/popup_events`, {
+        method: 'POST',
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({
+          event_type, slot_id, slot_date, content_type,
+          content_id: content_id || null,
+          browser_id: browser_id || null,
+        }),
+      });
+      if (!r.ok) {
+        console.error('[popup-event] insert HTTP', r.status, await r.text());
+        return res.status(200).json({ ok: false });
+      }
+    } catch (err) {
+      console.error('[popup-event] insert threw:', err?.message);
+      return res.status(200).json({ ok: false });
+    }
 
     return res.status(200).json({ ok: true });
   } catch (err) {
