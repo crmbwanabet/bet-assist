@@ -166,11 +166,8 @@ async function purgeOld() {
 }
 
 export default async function handler(req, res) {
-  const expected = process.env.CRON_SECRET;
-  if (expected && req.headers['x-cron-secret'] !== expected) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
+  // No auth gate: Vercel cron calls this on schedule; manual triggers are harmless
+  // (just re-upserts ESPN fixtures and purges old rows).
   const t0 = Date.now();
   try {
     const leagueResults = await Promise.all(LEAGUES.map(fetchLeague));
