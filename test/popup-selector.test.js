@@ -97,6 +97,17 @@ test('casino rotation is deterministic per (slotId, date)', () => {
   assert.equal(out1.title, out2.title);
 });
 
+test('non-derby match body leads with the team names in bold', () => {
+  const slot = new Date('2026-04-23T08:00:00Z');
+  const matches = [{ ...baseMatch, kickoff_utc: '2026-04-23T19:00:00Z' }];
+  const out = selectContent({ slotDateTime: slot, shownToday: [], matches, hotGames });
+  assert.equal(out.type, 'match');
+  assert.ok(out.body.includes('**Liverpool vs Arsenal**'),
+    `body should bold the matchup, got: ${out.body}`);
+  assert.ok(out.body.includes('CAT'),
+    `body should include kickoff time, got: ${out.body}`);
+});
+
 test('derby match surfaces derby_name in body or title', () => {
   const slot = new Date('2026-04-23T08:00:00Z');
   const matches = [{
