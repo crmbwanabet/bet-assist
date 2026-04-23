@@ -58,20 +58,25 @@ function formatKickoff(matchUtc, slotDateTime) {
 function buildMatchPayload(match, subtype, slotDateTime, slotId) {
   const home = match.home_team;
   const away = match.away_team;
+  const matchup = `${home} vs ${away}`;
   const kickoffStr = formatKickoff(match.kickoff_utc, slotDateTime);
-  const titleLead = match.is_derby && match.derby_name ? match.derby_name : `${home} vs ${away}`;
-  const titleBody = match.is_derby && match.derby_name ? `${home} vs ${away}` : '';
+  const isDerby = Boolean(match.is_derby && match.derby_name);
+  // Widget only renders `body`. Always include the matchup in bold so users
+  // see who's playing. For derbies, lead with the rivalry name then the teams.
+  const body = isDerby
+    ? `**${match.derby_name}** \u2014 ${matchup} \u2014 ${kickoffStr}. Get a pick \u2192`
+    : `**${matchup}** \u2014 ${kickoffStr}. Get a pick \u2192`;
   // Enrich the auto-fired chat prompt with kickoff + league so the bot doesn't
   // need a second ESPN round-trip just to surface those values in its reply.
   const leagueSuffix = match.league ? `, ${match.league}` : '';
-  const chatPrompt = `Give me a pick for ${home} vs ${away} (kickoff ${kickoffStr}${leagueSuffix})`;
+  const chatPrompt = `Give me a pick for ${matchup} (kickoff ${kickoffStr}${leagueSuffix})`;
   return {
     slotId,
     slotDate: catDateStr(slotDateTime),
     type: 'match',
     subtype,
-    title: titleLead,
-    body: titleBody ? `${titleBody} \u2014 ${kickoffStr}. Get a pick \u2192` : `${kickoffStr}. Get a pick \u2192`,
+    title: isDerby ? match.derby_name : matchup,
+    body,
     chatPrompt,
     fireChat: true,
     ttlSeconds: 30,
