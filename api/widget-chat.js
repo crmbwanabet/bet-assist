@@ -313,7 +313,17 @@ async function fetchRetry(url, maxRetries = 2) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const r = await fetch(url);
-      if (r.ok) return r;
+      if (r.ok) {
+        const ct = (r.headers.get('content-type') || '').toLowerCase();
+        if (ct.includes('json')) return r;
+        // ESPN (or any upstream) returned an HTML error page, a WAF block,
+        // or a maintenance banner. Returning the raw response would make
+        // downstream `await response.json()` throw "Unexpected token '<'".
+        // Surface this as a non-ok response so existing `!response.ok` checks
+        // fall through to the graceful "no data" branches.
+        console.warn(`[fetchRetry] non-JSON content-type "${ct}" at ${url}`);
+        return { ok: false, status: 502, async json() { return null; }, async text() { return ''; } };
+      }
       if (r.status >= 500 && attempt < maxRetries) {
         await new Promise(res => setTimeout(res, 800 * attempt));
         continue;
