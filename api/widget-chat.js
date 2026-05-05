@@ -3002,7 +3002,31 @@ export default async function handler(req, res) {
         }),
       });
 
-      const data = await response.json();
+      // Guard against upstream returning anything that isn't valid JSON — Cloudflare
+      // HTML error pages (502/520/524), WAF challenges, half-cached responses, or
+      // content-type lies (header claims JSON, body is HTML). We read the body as
+      // text first and parse explicitly, so SyntaxError can't escape as a critical
+      // "Widget exception".
+      const ct = (response.headers.get('content-type') || '').toLowerCase();
+      const rawBody = await response.text().catch(() => '');
+      let data;
+      try {
+        data = JSON.parse(rawBody);
+      } catch (parseErr) {
+        const bodySnippet = rawBody.slice(0, 200).replace(/\s+/g, ' ').trim();
+        console.error(`[widget] OpenAI returned non-JSON: status=${response.status} ct="${ct}" body="${bodySnippet}"`);
+        supabaseInsert('monitor_errors', {
+          session_id: sessionId, source: 'api',
+          error_message: `Widget: OpenAI upstream non-JSON (HTTP ${response.status})`,
+          severity: 'high',
+          context: { endpoint: 'widget-chat', loop: loopCount, status: response.status, content_type: ct, body_snippet: bodySnippet, parse_error: parseErr.message },
+        });
+        slackAlert('high', `OpenAI upstream non-JSON (HTTP ${response.status})`, {
+          message: `Got non-JSON from OpenAI: ${bodySnippet}\n\n*User said:* ${userContentShort}`,
+          sessionId, endpoint: 'widget-chat',
+        });
+        return res.status(502).json({ error: 'Service temporarily unavailable' });
+      }
 
       if (!response.ok) {
         const errMsg = data.error?.message || 'API error';
@@ -3169,8 +3193,16 @@ export default async function handler(req, res) {
         }),
       });
 
+      const retryCt = (retryResp.headers.get('content-type') || '').toLowerCase();
+      let retryData = null;
       if (retryResp.ok) {
-        const retryData = await retryResp.json();
+        try {
+          retryData = await retryResp.json();
+        } catch (e) {
+          console.warn(`[widget] Hallucination retry returned non-JSON: ct="${retryCt}" err=${e.message}`);
+        }
+      }
+      if (retryData) {
         const retryChoice = retryData.choices?.[0];
         const retryText = retryChoice?.message?.content || '';
         if (retryText) {
