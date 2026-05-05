@@ -2609,14 +2609,26 @@ function validateResponseNumbers(finalText, toolResultsLog, allToolsCalled, sess
   dateTimeNumbers.add('2025');
   dateTimeNumbers.add('2026');
 
-  // Derived win rates — the system prompt *teaches* the bot to compute wins/played*100
-  // as "Win rate: X%". Those percentages never appear literally in tool JSON, so we
-  // precompute every possible rate from any {wins, played|games} pair and accept any
-  // response number within ±0.2 of one of them.
+  // Single walk of tool results collects (a) derived win rates, (b) every numeric leaf,
+  // and (c) W/D/L/total counts decoded from form strings like "DWWLWLWWWW". The
+  // form-string decode is what catches "7 wins" when the actual string has 6 W —
+  // the single-digit claim the main \d{2,} regex never sees.
   const derivedRates = [];
+  const toolNumbers = new Set();
   const visit = (node) => {
-    if (!node || typeof node !== 'object') return;
+    if (node === null || node === undefined) return;
+    if (typeof node === 'number') { toolNumbers.add(node); return; }
+    if (typeof node === 'string') {
+      if (/^[WDLwdl]{3,}$/.test(node)) {
+        const s = node.toUpperCase();
+        let w = 0, d = 0, l = 0;
+        for (const c of s) { if (c === 'W') w++; else if (c === 'D') d++; else if (c === 'L') l++; }
+        toolNumbers.add(w); toolNumbers.add(d); toolNumbers.add(l); toolNumbers.add(s.length);
+      }
+      return;
+    }
     if (Array.isArray(node)) { node.forEach(visit); return; }
+    if (typeof node !== 'object') return;
     const w = typeof node.wins === 'number' ? node.wins : null;
     const g = typeof node.played === 'number' ? node.played
            : typeof node.games  === 'number' ? node.games : null;
@@ -2636,15 +2648,31 @@ function validateResponseNumbers(finalText, toolResultsLog, allToolsCalled, sess
     !matchesDerivedRate(num)
   );
 
-  // If more than 3 numbers appear in response but not in any tool result, flag it
-  if (suspicious.length > 3) {
-    console.warn('[widget] Possible hallucinated stats detected:', suspicious);
+  // Keyword-stat pass: catch small-integer claims ("7 wins", "3 clean sheets") that
+  // the main \d{2,} regex misses. Lookbehind excludes digits/dot so "over 2.5 goals"
+  // does not match "5 goals". Flag only if the claimed int is not a numeric leaf
+  // anywhere in tool data and not a derived rate.
+  const STAT_KEYWORD_RE = /(?<![\d.])(\d{1,2})\s+(wins?|won|losses?|lost|loses|draws?|drew|drawn|clean\s+sheets?|goals?|games?|matches?|points?)\b/gi;
+  const suspiciousStats = [];
+  for (const m of finalText.matchAll(STAT_KEYWORD_RE)) {
+    const n = parseInt(m[1], 10);
+    if (!Number.isFinite(n)) continue;
+    if (toolNumbers.has(n)) continue;
+    if (matchesDerivedRate(String(n))) continue;
+    suspiciousStats.push(`${m[1]} ${m[2]}`);
+  }
+
+  const allSuspicious = [...suspicious, ...suspiciousStats];
+  // Flag on >3 large-number misses (existing tolerance for parse noise) OR any
+  // keyword-stat miss (new path is precise enough for zero tolerance).
+  if (suspicious.length > 3 || suspiciousStats.length > 0) {
+    console.warn('[widget] Possible hallucinated stats detected:', allSuspicious);
     slackAlert('medium', 'Possible hallucinated stats', {
-      message: `${suspicious.length} numbers not found in tool data: ${suspicious.slice(0, 8).join(', ')}\n\n*AI response (first 300):* ${finalText.slice(0, 300)}`,
+      message: `${allSuspicious.length} suspicious: ${allSuspicious.slice(0, 8).join(', ')}\n\n*AI response (first 300):* ${finalText.slice(0, 300)}`,
       sessionId,
       endpoint: 'widget-chat',
     }).catch(() => {});
-    return { flagged: true, suspicious };
+    return { flagged: true, suspicious: allSuspicious };
   }
   return { flagged: false, suspicious: [] };
 }
