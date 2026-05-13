@@ -223,6 +223,7 @@
       box-shadow: 0 4px 24px rgba(245,197,24,0.35), 0 2px 8px rgba(0,0,0,0.4);
       transition: transform 0.2s ease, box-shadow 0.2s ease;
       position: relative;
+      z-index: 2;
     }
     .be-btn:hover {
       transform: scale(1.1);
@@ -244,6 +245,66 @@
     @keyframes be-pulse {
       0% { transform: scale(1); opacity: 0.5; }
       100% { transform: scale(1.4); opacity: 0; }
+    }
+
+    /* ---- ROBOT PEEP (one-shot, 3s after load) ----
+       Anchor is a 58x200 box at button bottom, with the bottom 58px (button area)
+       clipped so the robot can only render ABOVE button-top. The robot starts
+       fully tucked behind the button and rises out, waves + winks, drops back
+       behind, then fades. After the 7s animation it stays at opacity 0. */
+    .be-robot-anchor {
+      position: absolute;
+      width: 58px;
+      height: 200px;
+      bottom: 0;
+      right: 0;
+      z-index: 1;
+      pointer-events: none;
+      clip-path: inset(0 0 58px 0);
+    }
+    .be-robot {
+      position: absolute;
+      bottom: 0;
+      right: 3px;
+      width: 58px;
+      height: 60px;
+      display: block;
+      animation: be-peep 7s ease-in-out 3s 1 forwards;
+    }
+    .be-robot .be-wave-arm {
+      animation: be-wave 7s linear 3s 1 forwards;
+      transform-origin: 100px 75px;
+    }
+    .be-robot .be-eye {
+      animation: be-wink 7s linear 3s 1 forwards;
+      transform-origin: center;
+      transform-box: fill-box;
+    }
+    @keyframes be-peep {
+      0%   { transform: translateY(0);     opacity: 1; }
+      4%   { transform: translateY(-28px); opacity: 1; }
+      7%   { transform: translateY(-28px); opacity: 1; }
+      13%  { transform: translateY(-50px); opacity: 1; }
+      60%  { transform: translateY(-50px); opacity: 1; }
+      71%  { transform: translateY(0);     opacity: 1; }
+      100% { transform: translateY(0);     opacity: 0; }
+    }
+    @keyframes be-wave {
+      0%, 13%   { transform: rotate(0); }
+      19%       { transform: rotate(-32deg); }
+      25%       { transform: rotate(32deg); }
+      31%       { transform: rotate(-32deg); }
+      37%       { transform: rotate(32deg); }
+      43%       { transform: rotate(-32deg); }
+      49%, 100% { transform: rotate(0); }
+    }
+    @keyframes be-wink {
+      0%, 50%   { transform: scaleY(1); }
+      53%       { transform: scaleY(0.1); }
+      56%, 100% { transform: scaleY(1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .be-robot, .be-robot .be-wave-arm, .be-robot .be-eye { animation: none; opacity: 0; }
     }
 
     /* Notification badge */
@@ -665,6 +726,47 @@
           <button class="be-footer-link" id="beClearChat">Clear chat</button>
         </div>
       </div>
+    </div>
+    <div class="be-robot-anchor" aria-hidden="true">
+      <svg class="be-robot" viewBox="0 0 120 124">
+        <line x1="60" y1="32" x2="60" y2="20" stroke="#52525b" stroke-width="2"/>
+        <circle cx="60" cy="14" r="4.5" fill="#a1a1aa" stroke="#52525b" stroke-width="1.2"/>
+        <line x1="48" y1="34" x2="44" y2="22" stroke="#52525b" stroke-width="1.5"/>
+        <circle cx="44" cy="20" r="1.5" fill="#52525b"/>
+        <rect x="32" y="32" width="56" height="42" rx="3" fill="#9ca3af" stroke="#52525b" stroke-width="1.2"/>
+        <circle cx="36" cy="36" r="1.3" fill="#52525b"/>
+        <circle cx="60" cy="36" r="1.3" fill="#52525b"/>
+        <circle cx="84" cy="36" r="1.3" fill="#52525b"/>
+        <circle cx="36" cy="70" r="1.3" fill="#52525b"/>
+        <circle cx="60" cy="70" r="1.3" fill="#52525b"/>
+        <circle cx="84" cy="70" r="1.3" fill="#52525b"/>
+        <circle class="be-eye" cx="50" cy="55" r="6" fill="#1f2937" stroke="#52525b" stroke-width="1"/>
+        <circle class="be-eye" cx="70" cy="55" r="6" fill="#1f2937" stroke="#52525b" stroke-width="1"/>
+        <circle cx="51" cy="53" r="1.5" fill="#fff"/>
+        <circle cx="71" cy="53" r="1.5" fill="#fff"/>
+        <path d="M 50 64 Q 60 72 70 64" stroke="#1f2937" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <rect x="50" y="74" width="20" height="3" fill="#52525b"/>
+        <rect x="50" y="78" width="20" height="3" fill="#52525b"/>
+        <rect x="32" y="83" width="56" height="40" fill="#9ca3af" stroke="#52525b" stroke-width="1.2"/>
+        <line x1="60" y1="83" x2="60" y2="123" stroke="#52525b" stroke-width="1"/>
+        <circle cx="48" cy="103" r="6" fill="#1f2937" stroke="#52525b" stroke-width="1"/>
+        <line x1="48" y1="103" x2="51" y2="100" stroke="#a1a1aa" stroke-width="1.2"/>
+        <rect x="58" y="98" width="22" height="10" rx="1" fill="#1f2937" stroke="#52525b" stroke-width=".8"/>
+        <line x1="60" y1="103" x2="78" y2="103" stroke="#a1a1aa" stroke-width=".8" stroke-dasharray="2 1"/>
+        <circle cx="36" cy="87" r="1.3" fill="#52525b"/>
+        <circle cx="84" cy="87" r="1.3" fill="#52525b"/>
+        <circle cx="36" cy="119" r="1.3" fill="#52525b"/>
+        <circle cx="84" cy="119" r="1.3" fill="#52525b"/>
+        <line x1="32" y1="92" x2="24" y2="100" stroke="#9ca3af" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="24" cy="100" r="2" fill="#52525b"/>
+        <line x1="24" y1="100" x2="37" y2="113" stroke="#9ca3af" stroke-width="6" stroke-linecap="round"/>
+        <line x1="88" y1="92" x2="100" y2="75" stroke="#9ca3af" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="100" cy="75" r="2.5" fill="#52525b"/>
+        <g class="be-wave-arm">
+          <line x1="100" y1="75" x2="100" y2="50" stroke="#9ca3af" stroke-width="6" stroke-linecap="round"/>
+          <circle cx="100" cy="48" r="4.5" fill="#9ca3af" stroke="#52525b" stroke-width="1"/>
+        </g>
+      </svg>
     </div>
     <button class="be-btn" id="beToggle" aria-label="Open BetPredict AI">
       ${ICO.ball}
