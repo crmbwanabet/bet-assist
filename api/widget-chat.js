@@ -3287,9 +3287,29 @@ export default async function handler(req, res) {
     let loopCount = 0;
     let finalText = '';
 
+    // Detect odds-related user intent. When present, FORCE the first tool call
+    // to be find_bwanabet_league — the model has been observed to call ESPN's
+    // get_games instead when given free choice, even with system-prompt rules.
+    const oddsKeywordPattern = /\b(odds?|1x2|btts|over\s*\/?\s*under|match\s*result|asian\s*handicap|double\s*chance|moneyline|handicap|prices?)\b/i;
+    const triggerBwanabet = oddsKeywordPattern.test(userContentFull || '');
+
     while (loopCount < MAX_TOOL_LOOPS) {
       loopCount++;
       console.log(`[widget] Loop ${loopCount}, messages: ${openaiMessages.length}`);
+
+      const shouldForceBwanabet = triggerBwanabet
+        && loopCount === 1
+        && !allToolsCalled.includes('find_bwanabet_league');
+
+      const reqBody = {
+        model,
+        max_completion_tokens: MAX_TOKENS,
+        messages: openaiMessages,
+        tools: TOOL_DEFINITIONS,
+      };
+      if (shouldForceBwanabet) {
+        reqBody.tool_choice = { type: 'function', function: { name: 'find_bwanabet_league' } };
+      }
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -3297,12 +3317,7 @@ export default async function handler(req, res) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model,
-          max_completion_tokens: MAX_TOKENS,
-          messages: openaiMessages,
-          tools: TOOL_DEFINITIONS,
-        }),
+        body: JSON.stringify(reqBody),
       });
 
       const data = await response.json();
