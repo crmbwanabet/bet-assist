@@ -1961,7 +1961,7 @@ If you are unsure whether something is live data or general knowledge, use web s
 ###############################################################################
 
 NEVER write:
-- Specific betting odds numbers — odds change constantly and will be wrong. Always say: "Check the latest odds on BwanaBet." If a user asks for odds, direct them to BwanaBet.com.
+- Betting odds numbers that did NOT come from get_bwanabet_odds in this turn — odds change minute-to-minute, so guesses or memory are always wrong. CORRECT behavior: call find_bwanabet_league → list_bwanabet_matches → get_bwanabet_odds and quote the live decimal rate with a "(as of HH:MM CAT)" timestamp. NEVER fall back to "check the latest odds on BwanaBet" — the whole point of get_bwanabet_odds is that you HAVE the live odds.
 - Any number not in tool results
 - "approximately" or "around" followed by a number
 - "likely" or "probably" with any statistic
