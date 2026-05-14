@@ -3499,6 +3499,7 @@ export default async function handler(req, res) {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let allToolsCalled = [];
+  let allToolCallDetails = []; // for debug responses ({name, args})
   let toolResultsLog = [];
 
   // Extract user message early so it's available in all error paths
@@ -3616,6 +3617,7 @@ export default async function handler(req, res) {
         if (!funcName) return { toolCall, resultContent: '{"error":"no function name"}' };
 
         allToolsCalled.push(funcName);
+        allToolCallDetails.push({ name: funcName, args: (funcArgs || '').slice(0, 500) });
         let resultContent;
         try {
           const input = JSON.parse(funcArgs || '{}');
@@ -3786,10 +3788,12 @@ export default async function handler(req, res) {
     console.log(`[widget] Done in ${durationMs}ms, ${loopCount} loops, ${allToolsCalled.length} tools, $${costUsd.toFixed(4)}` +
       (isTruncated ? ' [TRUNCATED]' : '') + (!hasActions ? ' [NO_ACTIONS]' : ''));
 
+    const debugMode = typeof sessionId === 'string' && sessionId.startsWith('debug_');
     return res.status(200).json({
       text: cleanText,
       actions: actions,
       usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens, tools: allToolsCalled.length },
+      ...(debugMode ? { debug: { tool_calls: allToolCallDetails, tool_results_preview: toolResultsLog.map(r => JSON.stringify(r).slice(0, 400)) } } : {}),
     });
 
   } catch (error) {
