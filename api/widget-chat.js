@@ -1095,6 +1095,209 @@ async function fetchFootballByTier(tier, daysAhead = 7) {
 }
 
 // ============================================
+// BwanaBet Odds Engine — direct from sportsbook
+// Public read endpoints, no auth. Source: api.bwanabet.co.zm GraphQL.
+// Returns live decimal odds for both pre-match and in-play matches.
+// ============================================
+const BWANABET_API = 'https://api.bwanabet.co.zm/api/v2/multi';
+let _bwSportListCache = null;
+let _bwSportListAt = 0;
+const BW_SPORT_LIST_TTL = 10 * 60 * 1000;
+
+async function bwQuery(query) {
+  const res = await fetch(BWANABET_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/plain, */*',
+      'Origin': 'https://bwanabet.co.zm',
+      'Referer': 'https://bwanabet.co.zm/',
+      'User-Agent': 'BetPredict-Widget/2.1',
+    },
+    body: JSON.stringify([{ module: 'graphs', method: 'makeQuery', options: { query } }]),
+  });
+  if (!res.ok) throw new Error(`BwanaBet HTTP ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data) || !data[0]) throw new Error('BwanaBet: unexpected response shape');
+  if (data[0].error) throw new Error(`BwanaBet: ${data[0].message || 'query error'}`);
+  return data[0].data;
+}
+
+function formatCAT(isoUtc) {
+  if (!isoUtc) return '';
+  const d = new Date(isoUtc);
+  if (isNaN(d.getTime())) return isoUtc;
+  const cat = new Date(d.getTime() + 2 * 60 * 60 * 1000);
+  const y = cat.getUTCFullYear();
+  const m = String(cat.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(cat.getUTCDate()).padStart(2, '0');
+  const hh = String(cat.getUTCHours()).padStart(2, '0');
+  const mm = String(cat.getUTCMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day} ${hh}:${mm} CAT`;
+}
+
+async function bwGetSportList() {
+  if (_bwSportListCache && Date.now() - _bwSportListAt < BW_SPORT_LIST_TTL) {
+    return _bwSportListCache;
+  }
+  const data = await bwQuery(`mutation {
+    sportList(sportListInput: {}) {
+      sportId sportName visible priority eventsCount
+      countries {
+        name
+        leagues { competitionId competitionName fullName eventsCount top priority }
+      }
+    }
+  }`);
+  _bwSportListCache = data.sportList || [];
+  _bwSportListAt = Date.now();
+  return _bwSportListCache;
+}
+
+async function bwFindLeague(query) {
+  const sports = await bwGetSportList();
+  const q = String(query || '').toLowerCase().trim();
+  if (!q) return [];
+  const matches = [];
+  for (const sport of sports) {
+    for (const country of sport.countries || []) {
+      for (const league of country.leagues || []) {
+        const hay = `${country.name} ${league.competitionName} ${sport.sportName}`.toLowerCase();
+        if (hay.includes(q)) {
+          matches.push({
+            sport: sport.sportName,
+            country: country.name,
+            competitionId: league.competitionId,
+            competitionName: league.competitionName,
+            fullName: league.fullName,
+            eventsCount: league.eventsCount,
+            top: !!league.top,
+          });
+        }
+      }
+    }
+  }
+  return matches
+    .sort((a, b) => (b.eventsCount || 0) - (a.eventsCount || 0))
+    .slice(0, 8);
+}
+
+async function bwListMatches(country, competitionName, sportId = 501) {
+  const safeCountry = String(country).replace(/"/g, '\\"');
+  const safeComp = String(competitionName).replace(/"/g, '\\"');
+  const data = await bwQuery(`mutation {
+    eventList(eventListInput: {
+      sportId: ${sportId}
+      topEvents: false
+      country: "${safeCountry}"
+      competitionName: "${safeComp}"
+    }) {
+      sportName
+      competitions {
+        competitionId country competitionName
+        events { eventId eventName eventStartTime top pricesCount }
+      }
+    }
+  }`);
+  const sport = data.eventList?.[0];
+  if (!sport) return [];
+  const events = [];
+  for (const comp of sport.competitions || []) {
+    for (const e of comp.events || []) {
+      events.push({
+        eventId: e.eventId,
+        eventName: e.eventName,
+        kickoffUtc: e.eventStartTime,
+        kickoff: formatCAT(e.eventStartTime),
+        pricesCount: e.pricesCount,
+        competitionName: comp.competitionName,
+        country: comp.country,
+      });
+    }
+  }
+  events.sort((a, b) => new Date(a.kickoffUtc) - new Date(b.kickoffUtc));
+  return events.slice(0, 15);
+}
+
+async function bwGetOdds(eventId) {
+  const data = await bwQuery(`mutation {
+    eventList(eventListInput: { eventId: ${eventId} }) {
+      sportId sportName
+      competitions {
+        competitionId country competitionName
+        events {
+          eventId eventName eventStartTime top pricesCount
+          collections {
+            collectionId collectionName
+            markets {
+              marketId marketName marketCode
+              prices { referenceId priceName handicapValue rate blocked }
+            }
+          }
+        }
+      }
+    }
+  }`);
+  const comp = data.eventList?.[0]?.competitions?.[0];
+  const event = comp?.events?.[0];
+  if (!event) throw new Error(`BwanaBet event ${eventId} not found`);
+
+  const collections = event.collections || [];
+  const wanted = ['1x2', 'DC', 'BTS', 'OE'];
+
+  const main = collections.find(c => c.collectionName === 'Main');
+  const markets = (main?.markets || [])
+    .filter(m => wanted.includes(m.marketCode))
+    .map(m => ({
+      marketCode: m.marketCode,
+      marketName: m.marketName,
+      selections: (m.prices || [])
+        .filter(p => !p.blocked && p.rate > 0)
+        .map(p => ({
+          label: String(p.priceName || '').trim(),
+          odds: p.rate,
+          ref: p.referenceId,
+        })),
+    }))
+    .filter(m => m.selections.length > 0);
+
+  const goals = collections.find(c => c.collectionName === 'Goals');
+  const ouMarket = goals?.markets?.find(m => m.marketCode === 'OU');
+  if (ouMarket) {
+    const at25 = (ouMarket.prices || []).filter(
+      p => p.handicapValue === 2.5 && !p.blocked && p.rate > 0
+    );
+    if (at25.length === 2) {
+      markets.push({
+        marketCode: 'OU_2.5',
+        marketName: 'Over/Under 2.5 Goals',
+        selections: at25.map(p => ({
+          label: `${String(p.priceName || '').trim()} 2.5`,
+          odds: p.rate,
+          ref: p.referenceId,
+        })),
+      });
+    }
+  }
+
+  const kickoffMs = new Date(event.eventStartTime).getTime();
+  const status = kickoffMs < Date.now() ? 'in_progress' : 'upcoming';
+
+  return {
+    eventId: event.eventId,
+    eventName: event.eventName,
+    kickoffUtc: event.eventStartTime,
+    kickoff: formatCAT(event.eventStartTime),
+    competitionName: comp.competitionName,
+    country: comp.country,
+    sport: data.eventList[0].sportName,
+    status,
+    fetchedAt: new Date().toISOString(),
+    markets,
+  };
+}
+
+// ============================================
 // TOOL DEFINITIONS (OpenAI function calling format)
 // ============================================
 const TOOL_DEFINITIONS = [
@@ -1200,6 +1403,38 @@ const TOOL_DEFINITIONS = [
         remove_index: { type: 'number', description: 'Required for action="remove". 0-based index of pick to remove.' },
       },
       required: ['action', 'current_slip'],
+    },
+  }},
+  { type: 'function', function: {
+    name: 'find_bwanabet_league',
+    description: 'Search the BwanaBet sportsbook directory for leagues by partial name. FIRST step in fetching odds — use this to resolve a league name to a country + competitionName. Returns up to 8 matches, sorted by event count. Examples: "Premier League", "Zambia", "Champions League", "Serie A", "La Liga".',
+    parameters: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'League, country, or competition name (partial match OK)' } },
+      required: ['query'],
+    },
+  }},
+  { type: 'function', function: {
+    name: 'list_bwanabet_matches',
+    description: 'List upcoming and in-play matches in a specific BwanaBet league. Use AFTER find_bwanabet_league. Returns up to 15 matches with eventId, eventName, and kickoff time (CAT). Use eventId with get_bwanabet_odds to fetch real odds.',
+    parameters: {
+      type: 'object',
+      properties: {
+        country: { type: 'string', description: 'Country name from find_bwanabet_league (e.g., "England", "Zambia")' },
+        competitionName: { type: 'string', description: 'Competition name from find_bwanabet_league (e.g., "Premier League", "Super League")' },
+      },
+      required: ['country', 'competitionName'],
+    },
+  }},
+  { type: 'function', function: {
+    name: 'get_bwanabet_odds',
+    description: 'Fetch CURRENT REAL BETTING ODDS for one match directly from BwanaBet. Returns Match Result (1x2), Double Chance, Both Teams to Score, Odd/Even, and Over/Under 2.5 Goals with current decimal odds. Works for BOTH pre-match AND in-play matches (rates are live). ALWAYS use this when a user asks about odds, prices, or a specific match\'s betting markets. Each selection includes a ref ID for downstream slip building. Status field is "upcoming" or "in_progress".',
+    parameters: {
+      type: 'object',
+      properties: {
+        eventId: { type: 'string', description: 'BwanaBet event ID (from list_bwanabet_matches)' },
+      },
+      required: ['eventId'],
     },
   }},
   { type: 'function', function: {
@@ -1358,6 +1593,9 @@ async function executeTool(name, input) {
       input.pick_data || null,
       input.remove_index ?? null
     );
+    case 'find_bwanabet_league': return await bwFindLeague(input.query);
+    case 'list_bwanabet_matches': return await bwListMatches(input.country, input.competitionName);
+    case 'get_bwanabet_odds': return await bwGetOdds(input.eventId);
     default: return { error: `Unknown tool: ${name}` };
   }
 }
@@ -1450,6 +1688,42 @@ RIGHT (just give the answer directly - no preamble):
 Go directly to the formatted response. No preamble. No narration. No commentary.
 
 ###############################################################################
+##  BETTING ODDS — AUTHORITATIVE SOURCE                                      ##
+###############################################################################
+
+For ANY question about betting odds, prices, or selection rates, you MUST use the BwanaBet tools — they pull live decimal odds directly from BwanaBet's sportsbook. Three-step chain:
+
+  1. find_bwanabet_league(query)            → resolve a league name to country + competitionName
+  2. list_bwanabet_matches(country, comp)   → find the eventId for the match
+  3. get_bwanabet_odds(eventId)             → fetch real current odds
+
+ABSOLUTE RULES FOR ODDS:
+- NEVER quote odds from memory, from ESPN, from web_search, or from general knowledge. Odds change minute-to-minute and only BwanaBet has the live numbers.
+- web_search is FORBIDDEN for odds.
+- calculate_bet_payout requires real odds — call get_bwanabet_odds FIRST, then feed the returned odds in.
+- When you quote odds, cite the timestamp from the get_bwanabet_odds \`fetchedAt\` field, e.g. "as of 14:32 CAT".
+- If get_bwanabet_odds returns status="in_progress", the match is LIVE — say so. Those rates are live in-play prices.
+- If a match isn't found on BwanaBet (find_bwanabet_league returns nothing useful), tell the user — don't fabricate.
+- For "what should I bet?" questions, after picking candidates via ESPN tools (get_football_by_tier, get_team_form), call get_bwanabet_odds for each candidate match to attach real prices before recommending.
+
+PICK + ODDS RULE — **MANDATORY**:
+Whenever you recommend a pick, a bet, or "what should I bet on" for a specific match, your response MUST include a line with real BwanaBet odds for that pick. Format:
+  **Odds (as of HH:MM CAT):** 1 / X / 2 = 2.10 / 3.40 / 3.20 — your pick: 1 @ 2.10
+A pick without an Odds line backed by get_bwanabet_odds is INVALID — fetch the odds before writing the pick. If the match isn't on BwanaBet, say so and don't make the pick.
+
+SELF-CHECK BEFORE YOU SEND:
+1. Does my response mention odds, a price, or a pick for a specific match?
+2. If yes, did I call get_bwanabet_odds in this turn? Are the numbers I'm about to write from that tool result?
+3. If no to (2), STOP. Call the tools first.
+
+EXAMPLE FLOW — "Arsenal vs Liverpool odds?":
+  → find_bwanabet_league("Premier League")
+  → list_bwanabet_matches("England", "Premier League")
+  → identify Arsenal v Liverpool, grab its eventId
+  → get_bwanabet_odds(eventId)
+  → Report: "**Arsenal v Liverpool** (Sat 18:30 CAT) — 1 / X / 2 = 2.10 / 3.40 / 3.20. Over 2.5: 1.85. BTTS Yes: 1.72. (as of 14:32 CAT)"
+
+###############################################################################
 ##  INTERACTIVE CONVERSATION DESIGN                                          ##
 ###############################################################################
 
@@ -1521,8 +1795,13 @@ Step 3: Report which leagues DO have matches today, e.g.:
 Step 4: WAIT for the user to confirm before calling get_team_form and building picks.
         Do NOT auto-generate picks for leagues the user hasn't agreed to.
 
-Step 5: Once user confirms, call get_team_form for both teams in each selected match,
-        then build the betslip using the UPDATED PICK FORMAT below.
+Step 5: Once user confirms, call get_team_form for both teams in each selected match.
+
+Step 6: For each chosen match, fetch REAL ODDS via the BwanaBet chain:
+        a. find_bwanabet_league(<league name>) → get country + competitionName
+        b. list_bwanabet_matches(country, competitionName) → find the match, grab eventId
+        c. get_bwanabet_odds(eventId) → returns live decimal odds
+        Then build the betslip using the UPDATED PICK FORMAT below — Odds line is required.
 
 IMPORTANT: Never say "form data isn't available" without actually trying.
 Always call get_team_form with the exact team name AND league parameter to
@@ -1536,7 +1815,7 @@ When suggesting a bet, ALWAYS include:
 3. **My Pick**: The specific bet (e.g., BTTS Yes, Over 2.5, Home Win)
 4. **Confidence**: Low / Medium / High (based on data strength)
 5. **Why this pick**: 1-2 sentences explaining the reasoning from tool data
-6. **Odds**: "Check the latest odds on BwanaBet" — do NOT quote specific odds numbers, they change constantly and may be inaccurate
+6. **Odds**: Quote the EXACT decimal odds for your pick from get_bwanabet_odds, with the fetchedAt timestamp as "as of HH:MM CAT". Also list the full Match Result line (1 / X / 2) so the user sees context. NEVER write "check the odds on BwanaBet" — fetch them. If get_bwanabet_odds wasn't called or the match isn't on BwanaBet, do NOT make a pick.
 7. **How to place this bet on BwanaBet**:
    1. Open BwanaBet and go to Sports → Football → [League]
    2. Find "[Team A] vs [Team B]"
@@ -1689,7 +1968,7 @@ If ANY ESPN tool returns no results or errors, you MUST call web_search before t
 ## WHEN NOT TO USE
 
 - ESPN-covered leagues for standings, fixtures, match stats, team records
-- NEVER search for betting odds — direct users to BwanaBet
+- NEVER use web_search for odds — use the find_bwanabet_league → list_bwanabet_matches → get_bwanabet_odds chain instead (returns live decimal rates)
 
 ## DATA INTEGRITY
 
@@ -1706,7 +1985,7 @@ If ANY ESPN tool returns no results or errors, you MUST call web_search before t
 Report it with formatting. No preamble. Drive toward a bet.
 
 ### If tools return conflicting data:
-"I found inconsistent information. Please check bwanabet.com for the latest odds and fixtures."
+Pick the most recent tool result (the one with the latest fetchedAt). For odds specifically, get_bwanabet_odds is always the authoritative source — prefer its numbers over anything from web_search or model memory.
 
 ### If tools return errors or no data:
 "I couldn't find current data for [league/team]. Try a different league or check back closer to match time."
@@ -1755,7 +2034,7 @@ When a user asks about individual players (comparisons, who is better, career st
 ###############################################################################
 
 NEVER write:
-- Specific betting odds numbers — odds change constantly and will be wrong. Always say: "Check the latest odds on BwanaBet." If a user asks for odds, direct them to BwanaBet.com.
+- Betting odds numbers that did NOT come from get_bwanabet_odds in this turn — odds change minute-to-minute, so guesses or memory are always wrong. CORRECT behavior: call find_bwanabet_league → list_bwanabet_matches → get_bwanabet_odds and quote the live decimal rate with a "(as of HH:MM CAT)" timestamp. NEVER fall back to "check the latest odds on BwanaBet" — the whole point of get_bwanabet_odds is that you HAVE the live odds.
 - Any number not in tool results
 - "approximately" or "around" followed by a number
 - "likely" or "probably" with any statistic
@@ -2397,12 +2676,16 @@ ALWAYS give a pick. ALWAYS disclose data gaps. Never refuse.
 ## PICK FORMAT
 
 **My Pick:** [betType]
+**Odds (as of HH:MM CAT — from get_bwanabet_odds fetchedAt):** [picked selection label] @ [odds]
+*Match Result on BwanaBet: 1 / X / 2 = [home] / [draw] / [away]*
 **Based on:** [form data for both teams — formString, scored in X/total, BTTS rate]
 **Confidence:** [High/Medium/Low]
 **How to place on BwanaBet:** Sports → Football → [League] → [Match] → [Bet Type]
 
-If partial data: name what's missing, add research links (Sofascore, Flashscore), cap at Medium.
-If no data: label as "My Best Guess", use standings only, confidence Low, add research links.
+REQUIRED: Before writing this pick, you MUST have called get_bwanabet_odds(eventId) for the match. The Odds line is non-optional. If the match isn't on BwanaBet, don't recommend it.
+
+If partial data: name what's missing, add research links (Sofascore, Flashscore), cap at Medium. Odds line is still required.
+If no data: label as "My Best Guess", use standings only, confidence Low, add research links. Odds line still required.
 
 ## ACCUMULATOR CONFIDENCE
 
@@ -2934,6 +3217,7 @@ export default async function handler(req, res) {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let allToolsCalled = [];
+  let allToolCallDetails = []; // debug: {name, args}
   let toolResultsLog = [];
 
   // Extract user message early so it's available in all error paths
@@ -3065,6 +3349,7 @@ export default async function handler(req, res) {
         if (!funcName) return { toolCall, resultContent: '{"error":"no function name"}' };
 
         allToolsCalled.push(funcName);
+        allToolCallDetails.push({ name: funcName, args: (funcArgs || '').slice(0, 500) });
         let resultContent;
         try {
           const input = JSON.parse(funcArgs || '{}');
@@ -3275,10 +3560,12 @@ export default async function handler(req, res) {
       });
     }
 
+    const debugMode = typeof sessionId === 'string' && sessionId.startsWith('debug_');
     return res.status(200).json({
       text: cleanText,
       actions: actions,
       usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens, tools: allToolsCalled.length },
+      ...(debugMode ? { debug: { tool_calls: allToolCallDetails, tool_results_preview: toolResultsLog.map(r => JSON.stringify(r).slice(0, 400)) } } : {}),
     });
 
   } catch (error) {
