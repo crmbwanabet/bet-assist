@@ -1157,7 +1157,7 @@ async function bwGetSportList() {
 async function bwFindLeague(query) {
   const sports = await bwGetSportList();
   const q = String(query || '').toLowerCase().trim();
-  if (!q) return [];
+  if (!q) return { leagues: [], next_step: 'No query provided. Call find_bwanabet_league with a league name string.' };
   const matches = [];
   for (const sport of sports) {
     for (const country of sport.countries || []) {
@@ -1177,9 +1177,17 @@ async function bwFindLeague(query) {
       }
     }
   }
-  return matches
+  const leagues = matches
     .sort((a, b) => (b.eventsCount || 0) - (a.eventsCount || 0))
     .slice(0, 8);
+  if (leagues.length === 0) {
+    return { leagues: [], next_step: `No BwanaBet league matched "${query}". Tell the user this league isn't on BwanaBet. Do not invent odds.` };
+  }
+  const top = leagues[0];
+  return {
+    leagues,
+    next_step: `MANDATORY NEXT TOOL CALL: list_bwanabet_matches({country: "${top.country}", competitionName: "${top.competitionName}"}) — use these EXACT strings, copy them verbatim. If the user named a different country (e.g. they said "English" Premier League), pick the matching league from the leagues array and call list_bwanabet_matches with that country+competitionName instead. Do NOT call get_games or any ESPN tool for odds — bwanabet is the only odds source.`,
+  };
 }
 
 async function bwListMatches(country, competitionName, sportId = 501) {
@@ -1200,23 +1208,34 @@ async function bwListMatches(country, competitionName, sportId = 501) {
     }
   }`);
   const sport = data.eventList?.[0];
-  if (!sport) return [];
   const events = [];
-  for (const comp of sport.competitions || []) {
-    for (const e of comp.events || []) {
-      events.push({
-        eventId: e.eventId,
-        eventName: e.eventName,
-        kickoffUtc: e.eventStartTime,
-        kickoff: formatCAT(e.eventStartTime),
-        pricesCount: e.pricesCount,
-        competitionName: comp.competitionName,
-        country: comp.country,
-      });
+  if (sport) {
+    for (const comp of sport.competitions || []) {
+      for (const e of comp.events || []) {
+        events.push({
+          eventId: e.eventId,
+          eventName: e.eventName,
+          kickoffUtc: e.eventStartTime,
+          kickoff: formatCAT(e.eventStartTime),
+          pricesCount: e.pricesCount,
+          competitionName: comp.competitionName,
+          country: comp.country,
+        });
+      }
     }
   }
   events.sort((a, b) => new Date(a.kickoffUtc) - new Date(b.kickoffUtc));
-  return events.slice(0, 15);
+  const trimmed = events.slice(0, 15);
+  if (trimmed.length === 0) {
+    return {
+      matches: [],
+      next_step: `No upcoming matches on BwanaBet for country="${country}", competitionName="${competitionName}". Check that you used the EXACT strings from find_bwanabet_league. If you did, this league has no current fixtures — tell the user.`,
+    };
+  }
+  return {
+    matches: trimmed,
+    next_step: `MANDATORY NEXT TOOL CALL: get_bwanabet_odds({eventId: "<eventId from the match the user asked about>"}). If the user named specific teams, find the match in the matches array whose eventName contains BOTH teams and use its eventId. If the user asked generally ("next match"), use matches[0].eventId. Do NOT skip get_bwanabet_odds — odds without it are forbidden.`,
+  };
 }
 
 async function bwGetOdds(eventId) {
