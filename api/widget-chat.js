@@ -1154,17 +1154,54 @@ async function bwGetSportList() {
   return _bwSportListCache;
 }
 
+// Normalize common adjectival/demonym forms users say in chat
+// ("Egyptian" -> "egypt", "English" -> "england") to the canonical
+// country name BwanaBet uses in its sportList directory.
+const BW_DEMONYM_MAP = {
+  english: 'england', egyptian: 'egypt', italian: 'italy', spanish: 'spain',
+  german: 'germany', french: 'france', dutch: 'netherlands', portuguese: 'portugal',
+  belgian: 'belgium', scottish: 'scotland', turkish: 'turkey', greek: 'greece',
+  swiss: 'switzerland', austrian: 'austria', danish: 'denmark', swedish: 'sweden',
+  norwegian: 'norway', czech: 'czech republic', russian: 'russia', cypriot: 'cyprus',
+  israeli: 'israel', polish: 'poland', romanian: 'romania', hungarian: 'hungary',
+  croatian: 'croatia', serbian: 'serbia', ukrainian: 'ukraine', brazilian: 'brazil',
+  argentinian: 'argentina', argentine: 'argentina', mexican: 'mexico',
+  colombian: 'colombia', chilean: 'chile', uruguayan: 'uruguay', peruvian: 'peru',
+  american: 'usa', saudi: 'saudi arabia', japanese: 'japan', australian: 'australia',
+  chinese: 'china', indonesian: 'indonesia', thai: 'thailand', indian: 'india',
+  zambian: 'zambia', kenyan: 'kenya', nigerian: 'nigeria', ghanaian: 'ghana',
+  ugandan: 'uganda', tanzanian: 'tanzania', ethiopian: 'ethiopia', moroccan: 'morocco',
+  algerian: 'algeria', tunisian: 'tunisia', 'south african': 'south africa',
+};
+
+function normalizeBwQuery(q) {
+  let s = String(q || '').toLowerCase().trim();
+  // multi-word demonyms first
+  for (const [demonym, canonical] of Object.entries(BW_DEMONYM_MAP)) {
+    if (demonym.includes(' ') && s.includes(demonym)) {
+      s = s.replace(demonym, canonical);
+    }
+  }
+  // single-word demonyms
+  s = s.split(/\s+/).map(w => BW_DEMONYM_MAP[w] || w).join(' ');
+  return s;
+}
+
 async function bwFindLeague(query) {
   const sports = await bwGetSportList();
-  const q = String(query || '').toLowerCase().trim();
+  const rawQ = String(query || '').toLowerCase().trim();
+  const q = normalizeBwQuery(rawQ);
   if (!q) return { leagues: [], next_step: 'No query provided. Call find_bwanabet_league with a league name string.' };
-  const matches = [];
+
+  // Collect every league with its haystack so we can try progressive matching.
+  const allLeagues = [];
   for (const sport of sports) {
     for (const country of sport.countries || []) {
       for (const league of country.leagues || []) {
         const hay = `${country.name} ${league.competitionName} ${sport.sportName}`.toLowerCase();
-        if (hay.includes(q)) {
-          matches.push({
+        allLeagues.push({
+          hay,
+          row: {
             sport: sport.sportName,
             country: country.name,
             competitionId: league.competitionId,
@@ -1172,12 +1209,31 @@ async function bwFindLeague(query) {
             fullName: league.fullName,
             eventsCount: league.eventsCount,
             top: !!league.top,
-          });
-        }
+          },
+        });
       }
     }
   }
-  const leagues = matches
+
+  // Try 1: full phrase substring match (handles "premier league", "champions league")
+  let matched = allLeagues.filter(l => l.hay.includes(q));
+
+  // Try 2: all words present (handles "egypt premier league")
+  if (matched.length === 0) {
+    const words = q.split(/\s+/).filter(w => w.length > 1);
+    if (words.length > 1) {
+      matched = allLeagues.filter(l => words.every(w => l.hay.includes(w)));
+    }
+  }
+
+  // Try 3: ANY content word present (handles single-word queries that may have been normalized)
+  if (matched.length === 0) {
+    const words = q.split(/\s+/).filter(w => w.length > 2);
+    matched = allLeagues.filter(l => words.some(w => l.hay.includes(w)));
+  }
+
+  const leagues = matched
+    .map(l => l.row)
     .sort((a, b) => (b.eventsCount || 0) - (a.eventsCount || 0))
     .slice(0, 8);
   if (leagues.length === 0) {
