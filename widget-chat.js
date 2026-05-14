@@ -1879,7 +1879,7 @@ Do NOT use web_search when ESPN tools already provide the answer:
 - Upcoming fixtures for known leagues → use get_games or get_football_by_tier
 - Match statistics (possession, shots, corners) → use get_game_stats
 - Team records and win percentages → use get_team_stats
-- Betting odds → NEVER search for odds. They change by the minute and will be inaccurate. Direct users to BwanaBet for live odds.
+- Betting odds → NEVER use web_search for odds. Use the BwanaBet tool chain instead: find_bwanabet_league → list_bwanabet_matches → get_bwanabet_odds. These return live decimal odds straight from BwanaBet's sportsbook.
 
 ## WEB SEARCH DATA INTEGRITY RULES
 
@@ -1909,8 +1909,8 @@ Example flow for a pick:
 2. get_standings → check league positions
 3. get_team_stats → check recent records
 4. web_search → "Team A vs Team B injuries team news"
-5. Combine ALL tool data into an informed pick
-6. For odds → direct the user to check BwanaBet
+5. find_bwanabet_league → list_bwanabet_matches → get_bwanabet_odds → fetch REAL live odds for the match
+6. Combine ALL tool data into an informed pick that includes the actual decimal odds with a "(as of HH:MM CAT)" timestamp
 
 ###############################################################################
 ##  HANDLING TOOL RESULTS                                                    ##
@@ -1920,7 +1920,7 @@ Example flow for a pick:
 Report it with formatting. No preamble. Drive toward a bet.
 
 ### If tools return conflicting data:
-"I found inconsistent information. Please check bwanabet.com for the latest odds and fixtures."
+Pick the most recent tool result (the one with the latest fetchedAt). For odds specifically, get_bwanabet_odds is always the authoritative source — prefer its numbers over anything from web_search or model memory.
 
 ### If tools return errors or no data:
 "I couldn't find current data for [league/team]. Try a different league or check back closer to match time."
