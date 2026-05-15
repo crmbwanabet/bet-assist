@@ -1237,21 +1237,44 @@ async function bwFindLeague(query) {
     .sort((a, b) => (b.eventsCount || 0) - (a.eventsCount || 0))
     .slice(0, 8);
   if (leagues.length === 0) {
-    return { leagues: [], next_step: `No BwanaBet league matched "${query}". Tell the user this league isn't on BwanaBet. Do not invent odds.` };
+    return {
+      leagues: [],
+      next_step: 'No BwanaBet league matched the query. Tell the user this league is not currently listed on BwanaBet. Do not invent odds.',
+    };
   }
-  const top = leagues[0];
+  // Sanitize the values we echo back into the next_step string — they end up
+  // in tool-result context that the model treats as authoritative. The values
+  // come from bwGetSportList (server-side trusted data), so this is defense
+  // in depth, not a known attack path.
+  const safeTopCountry = bwSafeStr(leagues[0].country);
+  const safeTopComp = bwSafeStr(leagues[0].competitionName);
   return {
     leagues,
-    next_step: `MANDATORY NEXT TOOL CALL: list_bwanabet_matches({country: "${top.country}", competitionName: "${top.competitionName}"}) — use these EXACT strings, copy them verbatim. If the user named a different country (e.g. they said "English" Premier League), pick the matching league from the leagues array and call list_bwanabet_matches with that country+competitionName instead. Do NOT call get_games or any ESPN tool for odds — bwanabet is the only odds source.`,
+    next_step: `Next step: call list_bwanabet_matches with country="${safeTopCountry}", competitionName="${safeTopComp}" (or pick a different row from the leagues array if it better matches the user's intent). Use the exact strings from this result. Bwanabet is the only odds source — do not call ESPN tools for odds.`,
   };
 }
 
+// BwanaBet country/competition names are well-known strings from their
+// sportList directory. Strict whitelist (letters, digits, common punctuation)
+// rejects quote/backslash/newline/GraphQL-comment injection attempts. Anything
+// outside the whitelist is dropped, not escaped — fail safe.
+function bwSafeStr(s) {
+  return String(s == null ? '' : s).slice(0, 100).replace(/[^A-Za-z0-9 .\-/&'()]/g, '');
+}
+
 async function bwListMatches(country, competitionName, sportId = 501) {
-  const safeCountry = String(country).replace(/"/g, '\\"');
-  const safeComp = String(competitionName).replace(/"/g, '\\"');
+  const safeCountry = bwSafeStr(country);
+  const safeComp = bwSafeStr(competitionName);
+  const safeSport = Number.isInteger(sportId) && sportId > 0 && sportId < 100000 ? sportId : 501;
+  if (!safeCountry || !safeComp) {
+    return {
+      matches: [],
+      next_step: 'Tool received an invalid country or competitionName. Call find_bwanabet_league first to get exact strings.',
+    };
+  }
   const data = await bwQuery(`mutation {
     eventList(eventListInput: {
-      sportId: ${sportId}
+      sportId: ${safeSport}
       topEvents: false
       country: "${safeCountry}"
       competitionName: "${safeComp}"
@@ -1285,18 +1308,26 @@ async function bwListMatches(country, competitionName, sportId = 501) {
   if (trimmed.length === 0) {
     return {
       matches: [],
-      next_step: `No upcoming matches on BwanaBet for country="${country}", competitionName="${competitionName}". Check that you used the EXACT strings from find_bwanabet_league. If you did, this league has no current fixtures — tell the user.`,
+      next_step: 'No upcoming matches found on BwanaBet for the requested league. Double-check you used the exact strings from find_bwanabet_league. If you did, this league has no current fixtures — tell the user.',
     };
   }
   return {
     matches: trimmed,
-    next_step: `MANDATORY NEXT TOOL CALL: get_bwanabet_odds({eventId: "<eventId from the match the user asked about>"}). If the user named specific teams, find the match in the matches array whose eventName contains BOTH teams and use its eventId. If the user asked generally ("next match"), use matches[0].eventId. Do NOT skip get_bwanabet_odds — odds without it are forbidden.`,
+    next_step: 'Next step: call get_bwanabet_odds with an eventId from the matches array. If the user named specific teams, pick the match whose eventName contains both teams; otherwise use matches[0].eventId. Odds without get_bwanabet_odds are forbidden.',
   };
 }
 
 async function bwGetOdds(eventId) {
+  // Validate as a positive integer. eventId is interpolated unquoted into the
+  // GraphQL mutation (the API expects an Int), so any non-numeric input would
+  // be an injection vector.
+  const idStr = String(eventId == null ? '' : eventId).trim();
+  if (!/^\d{1,12}$/.test(idStr)) {
+    throw new Error(`Invalid BwanaBet eventId: ${idStr.slice(0, 50)}`);
+  }
+  const id = Number.parseInt(idStr, 10);
   const data = await bwQuery(`mutation {
-    eventList(eventListInput: { eventId: ${eventId} }) {
+    eventList(eventListInput: { eventId: ${id} }) {
       sportId sportName
       competitions {
         competitionId country competitionName
@@ -3292,7 +3323,6 @@ export default async function handler(req, res) {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let allToolsCalled = [];
-  let allToolCallDetails = []; // debug: {name, args}
   let toolResultsLog = [];
 
   // Extract user message early so it's available in all error paths
@@ -3439,7 +3469,6 @@ export default async function handler(req, res) {
         if (!funcName) return { toolCall, resultContent: '{"error":"no function name"}' };
 
         allToolsCalled.push(funcName);
-        allToolCallDetails.push({ name: funcName, args: (funcArgs || '').slice(0, 500) });
         let resultContent;
         try {
           const input = JSON.parse(funcArgs || '{}');
@@ -3650,12 +3679,10 @@ export default async function handler(req, res) {
       });
     }
 
-    const debugMode = typeof sessionId === 'string' && sessionId.startsWith('debug_');
     return res.status(200).json({
       text: cleanText,
       actions: actions,
       usage: { input_tokens: totalInputTokens, output_tokens: totalOutputTokens, tools: allToolsCalled.length },
-      ...(debugMode ? { debug: { tool_calls: allToolCallDetails, tool_results_preview: toolResultsLog.map(r => JSON.stringify(r).slice(0, 400)) } } : {}),
     });
 
   } catch (error) {
