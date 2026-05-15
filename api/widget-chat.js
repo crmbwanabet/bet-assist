@@ -2956,13 +2956,82 @@ async function checkRateLimit(sessionId) {
   try {
     const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
     const resp = await fetch(
-      `${url}/rest/v1/monitor_requests?select=id&session_id=eq.${sessionId}&created_at=gte.${oneMinuteAgo}`,
+      `${url}/rest/v1/monitor_requests?select=id&session_id=eq.${encodeURIComponent(sessionId)}&created_at=gte.${oneMinuteAgo}`,
       { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
     );
     if (!resp.ok) return true;
     const rows = await resp.json();
     return rows.length < 15;
   } catch (e) { return true; }
+}
+
+// In-memory IP rate limit. Sticky enough across Vercel warm invocations to
+// catch single-attacker abuse from one IP rotating client-side session_ids.
+// Doesn't survive cold starts, which is fine — the daily spend cap is the
+// catch-all for spread attacks.
+const _ipRateLimit = new Map();
+const IP_RL_WINDOW_MS = 60_000;
+const IP_RL_MAX_PER_MIN = 30;
+
+function clientIpFromHeaders(headers) {
+  const xff = headers['x-forwarded-for'] || '';
+  // First IP in the comma-separated list is the original client per Vercel docs.
+  const first = String(xff).split(',')[0].trim();
+  return first || (headers['x-real-ip'] || '').trim() || '';
+}
+
+function checkIpRateLimit(ip) {
+  if (!ip) return true;
+  const now = Date.now();
+  const arr = (_ipRateLimit.get(ip) || []).filter(t => now - t < IP_RL_WINDOW_MS);
+  if (arr.length >= IP_RL_MAX_PER_MIN) return false;
+  arr.push(now);
+  _ipRateLimit.set(ip, arr);
+  // Cap map size — purge stale entries when growing past ~5000 unique IPs.
+  if (_ipRateLimit.size > 5000) {
+    const cutoff = now - IP_RL_WINDOW_MS;
+    for (const [k, v] of _ipRateLimit) {
+      const fresh = v.filter(t => t > cutoff);
+      if (fresh.length === 0) _ipRateLimit.delete(k);
+      else _ipRateLimit.set(k, fresh);
+    }
+  }
+  return true;
+}
+
+// Global per-day cost ceiling. If total spend in the rolling 24h exceeds the
+// cap, refuse new chats. Default $50; override via env. Failing open on
+// Supabase errors so an outage doesn't take down chat.
+async function checkDailySpendCap() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return { ok: true };
+  const cap = Number.parseFloat(process.env.WIDGET_DAILY_SPEND_CAP_USD || '50');
+  if (!Number.isFinite(cap) || cap <= 0) return { ok: true };
+  try {
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const resp = await fetch(
+      `${url}/rest/v1/monitor_requests?select=cost_usd&created_at=gte.${dayAgo}`,
+      { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+    );
+    if (!resp.ok) return { ok: true };
+    const rows = await resp.json();
+    const total = rows.reduce((a, r) => a + (Number(r.cost_usd) || 0), 0);
+    return { ok: total < cap, spent: total, cap };
+  } catch (e) {
+    return { ok: true };
+  }
+}
+
+// Strip common PII patterns from text before persisting to telemetry. Users
+// occasionally paste phone numbers, NRC IDs, or emails into chat; we don't
+// want those sitting in monitor_messages.
+function redactPII(s) {
+  if (!s || typeof s !== 'string') return s;
+  return s
+    .replace(/\b\d{6}\/\d{2}\/\d\b/g, '[NRC]')
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[EMAIL]')
+    .replace(/\+?\d[\d\s\-()]{8,}\d/g, '[PHONE]');
 }
 
 // ============================================
@@ -3280,18 +3349,44 @@ function detectOffTopicOutput(text) {
   return null;
 }
 
+// CORS allow-list. Production domains are explicit; previews are restricted
+// to the bet-assist project only (regex anchors the project prefix) so other
+// projects under the same Vercel team can't piggy-back on these credentials.
+const ALLOWED_ORIGINS = [
+  'https://bwanabet.com',
+  'https://www.bwanabet.com',
+  'https://bwanabet.co.zm',
+  'https://www.bwanabet.co.zm',
+  'https://bet-assist.vercel.app',
+];
+const BET_ASSIST_PREVIEW_RE = /^https:\/\/bet-assist-[a-z0-9-]+-bwanabetcrms-projects\.vercel\.app$/;
+
+function isAllowedOrigin(origin) {
+  if (!origin) return false;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  if (BET_ASSIST_PREVIEW_RE.test(origin)) return true;
+  if (process.env.WIDGET_DEV === 'true' && origin === 'http://localhost:3000') return true;
+  return false;
+}
+
 export default async function handler(req, res) {
   const origin = req.headers.origin || '';
-  const allowed = ['https://bwanabet.com', 'https://www.bwanabet.com', 'https://bwanabet.co.zm', 'https://www.bwanabet.co.zm', 'https://bet-assist.vercel.app'];
-  if (process.env.WIDGET_DEV === 'true') allowed.push('http://localhost:3000');
-  if (origin.endsWith('-bwanabetcrms-projects.vercel.app')) allowed.push(origin);
-  res.setHeader('Access-Control-Allow-Origin', allowed.includes(origin) ? origin : allowed[0]);
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  const originAllowed = isAllowedOrigin(origin);
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Only echo CORS headers when the origin actually passes the allow-list.
+  // Browsers reject cross-origin responses that omit these headers, so
+  // disallowed origins fail closed instead of being served with a wildcard.
+  if (originAllowed) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  }
+
+  if (req.method === 'OPTIONS') return res.status(originAllowed ? 200 : 403).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!originAllowed) return res.status(403).json({ error: 'Forbidden' });
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -3302,12 +3397,30 @@ export default async function handler(req, res) {
   const startTime = Date.now();
   const { messages, session_id } = req.body;
   const sessionId = session_id || 'widget_anon';
+  const clientIp = clientIpFromHeaders(req.headers);
 
   if (!messages?.length) return res.status(400).json({ error: 'Missing messages' });
 
+  // IP gate (in-memory, sticky-ish across warm invocations). Fast — runs first
+  // so abusers from one IP can't even reach Supabase or OpenAI.
+  if (!checkIpRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Too many requests. Please wait a moment.' });
+  }
+  // Per-session gate (Supabase-backed, slower) — second line of defense.
   const rateLimitOk = await checkRateLimit(sessionId);
   if (!rateLimitOk) {
     return res.status(429).json({ error: 'Too many requests. Please wait a moment.' });
+  }
+  // Global daily spend ceiling — catches distributed abuse the per-IP gate
+  // doesn't catch.
+  const spend = await checkDailySpendCap();
+  if (!spend.ok) {
+    console.warn(`[widget] Daily spend cap reached: $${spend.spent?.toFixed(2)} / $${spend.cap}`);
+    slackAlert('high', 'Daily spend cap reached', {
+      message: `BetPredict widget: $${spend.spent?.toFixed(2)} spent in last 24h (cap $${spend.cap}). New requests rejected.`,
+      endpoint: 'widget-chat',
+    });
+    return res.status(503).json({ error: 'Service temporarily at capacity. Please try again later.' });
   }
 
   // Sanitize incoming messages — strip anything that isn't a valid user/assistant message
@@ -3505,7 +3618,10 @@ export default async function handler(req, res) {
         try { return JSON.parse(resultContent)?._fallbackHint; } catch { return false; }
       });
       if (hasFailedEspn && !hasWebSearch) {
-        const userMsg = messages[messages.length - 1]?.content || '';
+        const rawUserMsg = messages[messages.length - 1]?.content || '';
+        // Cap the forwarded query so attackers can't use this fallback as a
+        // free Claude+web-search proxy for arbitrary long prompts.
+        const userMsg = String(rawUserMsg).slice(0, 200);
         console.log(`[widget] Auto web-search fallback triggered for: "${userMsg.slice(0, 80)}"`);
         try {
           const webResult = await executeWebSearch(userMsg);
@@ -3638,7 +3754,7 @@ export default async function handler(req, res) {
         quality: qualitySignals,
       }),
       supabaseInsert('monitor_messages', {
-        session_id: sessionId, role: 'user', content: userContentFull, tokens_used: totalInputTokens,
+        session_id: sessionId, role: 'user', content: redactPII(userContentFull), tokens_used: totalInputTokens,
       }),
       supabaseInsert('monitor_messages', {
         session_id: sessionId, role: 'assistant', content: finalText.slice(0, 2000), tokens_used: totalOutputTokens,
